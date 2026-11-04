@@ -7,8 +7,8 @@ Un jeu incrémental (idle / clicker) **en 3D** dans le navigateur. Tu incarnes u
 
 | | |
 |---|---|
-| ![Archipel en pleine production](docs/archipel.png) | ![Foreuses et info-bulle](docs/foreuses.png) |
-| ![Nouvelle île après le prestige (automne)](docs/prestige-automne.png) | ![Version mobile](docs/mobile.png) |
+| ![En jeu : machines, convoyeurs, info-bulle](docs/jeu.png) | ![L’Atelier](docs/atelier.png) |
+| ![L’Autel des runes](docs/runes.png) | ![Version mobile](docs/mobile.png) |
 
 ## Lancer en local
 
