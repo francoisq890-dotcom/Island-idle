@@ -82,9 +82,8 @@ export class Hud {
     this.jumpBtn = el('button', 'touch-btn small', ICONS.jump) as HTMLButtonElement;
     this.actBtn = el('button', 'touch-btn act', `${ICONS.hand}<span>Action</span>`) as HTMLButtonElement;
     pad.append(this.jumpBtn, this.actBtn);
-    const touchHint = el('div', 'touch-hint', 'Glisse à gauche pour marcher · à droite pour tourner');
 
-    this.root.append(resources, this.objective, this.actions, this.promptEl, this.tipEl, this.floaters, this.toasts, this.compassEl, pad, touchHint);
+    this.root.append(resources, this.objective, this.actions, this.promptEl, this.tipEl, this.floaters, this.toasts, this.compassEl, pad);
     parent.appendChild(this.root);
   }
 
@@ -158,7 +157,13 @@ export class Hud {
     const w = this.tipEl.offsetWidth;
     const h = this.tipEl.offsetHeight;
     const px = Math.max(8, Math.min(window.innerWidth - w - 8, x - w / 2));
-    const py = Math.max(8, Math.min(window.innerHeight - h - 8, y - h - 14));
+    // Flip below the anchor when it would cover the objective card at the top.
+    const topLimit = window.innerWidth > 760 ? 140 : 70;
+    let py = y - h - 14;
+    const below = py < topLimit;
+    if (below) py = y + 30;
+    py = Math.max(8, Math.min(window.innerHeight - h - 90, py));
+    this.tipEl.classList.toggle('below', below);
     this.tipEl.style.transform = `translate(${px}px, ${py}px)`;
   }
 
@@ -223,8 +228,12 @@ export class Hud {
       this.compassEl.classList.remove('on');
       return;
     }
-    const m = 44;
-    const k = Math.min((cx - m) / Math.max(1e-3, Math.abs(dx)), (cy - m) / Math.max(1e-3, Math.abs(dy)));
+    const mx = 44;
+    const myTop = 150;
+    const myBottom = 100;
+    const kx = (cx - mx) / Math.max(1e-3, Math.abs(dx));
+    const ky = dy < 0 ? (cy - myTop) / Math.max(1e-3, -dy) : (h - myBottom - cy) / Math.max(1e-3, dy);
+    const k = Math.min(kx, ky);
     const x = cx + dx * k;
     const y = cy + dy * k;
     this.compassEl.classList.add('on');

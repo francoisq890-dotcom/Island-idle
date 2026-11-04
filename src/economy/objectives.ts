@@ -24,6 +24,7 @@ export interface Objective {
   touchText?: string;
   /** Small helper line shown under the objective. */
   hint?: string;
+  touchHint?: string;
   target: ObjectiveTarget;
   progress: (s: GameState, r: Rates) => [current: number, goal: number];
   /** Shards (and lumen) granted on completion. */
@@ -38,6 +39,7 @@ export const OBJECTIVES: Objective[] = [
     text: 'Marche jusqu’au grand cristal lumineux',
     touchText: 'Utilise le joystick pour marcher jusqu’au grand cristal',
     hint: 'ZQSD / WASD pour marcher · glisser la souris pour tourner la caméra',
+    touchHint: 'Glisse à gauche de l’écran pour marcher, à droite pour tourner la caméra',
     target: { kind: 'crystal' },
     progress: (s) => [s.flags.nearCrystal ? 1 : 0, 1],
   },
@@ -46,6 +48,7 @@ export const OBJECTIVES: Objective[] = [
     text: 'Récolte 10 éclats sur le cristal',
     touchText: 'Touche le cristal pour récolter 10 éclats',
     hint: 'Clic gauche sur le cristal, ou touche E quand tu es à côté',
+    touchHint: 'Touche le cristal ou le bouton Action (garde-le appuyé pour enchaîner)',
     target: { kind: 'crystal' },
     progress: (s) => [Math.min(s.stats.harvests, 10), 10],
   },
@@ -53,6 +56,7 @@ export const OBJECTIVES: Objective[] = [
     id: 'drill1',
     text: 'Construis ta première foreuse sur la veine de cristal',
     hint: 'Approche-toi du chantier balisé et appuie sur E',
+    touchHint: 'Approche-toi du chantier balisé et appuie sur Action',
     target: { kind: 'site', machine: 'drill' },
     progress: m('drill', 1),
     reward: { shards: 5 },
@@ -70,6 +74,7 @@ export const OBJECTIVES: Objective[] = [
     text: 'Achète la « Pioche renforcée » dans l’Atelier',
     touchText: 'Ouvre l’Atelier (bouton marteau) et achète la « Pioche renforcée »',
     hint: 'Touche B ou le bouton Atelier en bas à droite',
+    touchHint: 'Le bouton marteau, en haut à droite',
     target: { kind: 'ui', panel: 'workshop' },
     progress: (s) => [s.upgrades.pick1 ? 1 : 0, 1],
   },

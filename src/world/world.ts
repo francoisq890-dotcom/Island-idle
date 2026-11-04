@@ -6,8 +6,8 @@
 import * as THREE from 'three';
 import { MACHINES, MACHINE_ORDER, type MachineId, type ZoneId } from '../config/economy';
 import { HOME_SEASONS, PALETTE, ZONE_GRASS, type GrassTheme } from '../config/palette';
-import { BRIDGES, ISLANDS, LIGHTHOUSE, MAIN_CRYSTAL, NEXUS, RANGES, SITES, type V2 } from '../config/world';
-import { milestoneMult, type Rates } from '../economy/economy';
+import { BRIDGES, ISLANDS, LIGHTHOUSE, MAIN_CRYSTAL, NEXUS, RANGES, SITES, SPAWN, type V2 } from '../config/world';
+import { computeRates, milestoneMult, type Rates } from '../economy/economy';
 import type { GameState } from '../economy/state';
 import { mulberry32 } from '../core/noise';
 import { Ease, type Tweens } from '../core/tween';
@@ -204,7 +204,9 @@ export class World {
     this.player.onLand = (p) => this.particles.smoke(p.clone().setY(p.y + 0.1), { count: 6, color: 0xf4e6d4, speed: 2.5, life: 0.5, size: 0.18, up: 0.5 });
 
     this.sync(state, null, false);
-    this.player.teleport(state.player.x, state.player.z, state.player.yaw, this.ground);
+    // Restore the saved position only if it is still on solid ground.
+    const okPos = this.ground.walkable(state.player.x, state.player.z);
+    this.player.teleport(okPos ? state.player.x : SPAWN.x, okPos ? state.player.z : SPAWN.z, state.player.yaw, this.ground);
     this.rig.yaw = state.player.yaw;
     this.rig.target.copy(this.player.position).add(new THREE.Vector3(0, 1.3, 0));
     this.rig.snap();
@@ -595,7 +597,8 @@ export class World {
       }
     }
     for (const id of MACHINE_ORDER) this.sites[id].setCount(0, 0, false);
-    this.sync(state, null, false);
+    this.sync(state, computeRates(state), false);
+    this.conveyors.prefill();
   }
 }
 

@@ -66,6 +66,9 @@ export class Game {
   private lastObjectiveId = '';
   private titleOrbit = 0;
   private stepToggle = false;
+  private incomeAcc = 0;
+  private lumenAcc = 0;
+  private incomeTimer = 0;
 
   constructor(private canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     const loaded = loadFromStorage();
@@ -198,6 +201,19 @@ export class Game {
 
     // Economy.
     tick(this.state, dt, this.rates);
+    this.incomeAcc += this.rates.shards * dt;
+    this.lumenAcc += this.rates.lumen * dt;
+    this.incomeTimer += dt;
+    if (this.incomeTimer > 2.5) {
+      // Show what the machines brought in, right above the Nexus.
+      const c = this.world.nexus.corePosition;
+      const nearNexus = this.world.player.position.distanceTo(c) < 40;
+      if (this.started && !this.busy && nearNexus && this.incomeAcc >= 1) this.hud.float(c.x, c.y + 1.6, c.z, `+${formatNumber(this.incomeAcc)}${ICONS.shard}`, 'small', 1.6);
+      if (this.started && !this.busy && nearNexus && this.lumenAcc >= 1) this.hud.float(c.x + 0.8, c.y + 1.2, c.z, `+${formatNumber(this.lumenAcc)}${ICONS.lumen}`, 'small lumen', 1.6);
+      this.incomeAcc = 0;
+      this.lumenAcc = 0;
+      this.incomeTimer = 0;
+    }
     if (this.started) this.state.flags.started = true;
 
     // Proximity flags for objectives.
@@ -303,6 +319,7 @@ export class Game {
   // ---------------------------------------------------------------------------
 
   private doHarvest(): void {
+    this.state.flags.nearCrystal = true;
     const v = harvest(this.state, this.rates);
     this.world.harvestFx(v);
     this.audio.harvest();
@@ -525,7 +542,7 @@ export class Game {
       const [c, g] = o.progress(s, r);
       const text = this.input.isTouch && o.touchText ? o.touchText : o.text;
       const label = g > 1 ? (g >= 1000 ? `${formatNumber(c)} / ${formatNumber(g)}` : `${Math.floor(c)} / ${g}`) : '';
-      this.hud.setObjective(text, o.hint ?? '', c, g, label);
+      this.hud.setObjective(text, (this.input.isTouch && o.touchHint) || o.hint || '', c, g, label);
       target = o.target;
       if (o.id !== this.lastObjectiveId) this.lastObjectiveId = o.id;
     } else {

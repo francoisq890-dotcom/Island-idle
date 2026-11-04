@@ -206,8 +206,15 @@ export class Renderer {
     this.resize();
   }
 
+  /** Draw calls / triangles of the last frame (all passes). */
+  stats = { calls: 0, triangles: 0 };
+
   render(dt: number): void {
+    this.renderer.info.autoReset = false;
+    this.renderer.info.reset();
     this.composer.render(dt);
+    this.stats.calls = this.renderer.info.render.calls;
+    this.stats.triangles = this.renderer.info.render.triangles;
     this.adapt(dt);
   }
 

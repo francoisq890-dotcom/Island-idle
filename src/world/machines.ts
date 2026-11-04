@@ -174,7 +174,7 @@ export const MODELS: Record<MachineId, () => MachineModel> = {
         part(new THREE.TorusGeometry(0.72, 0.05, 4, 12), C.crystal, [0, 2.48, 0], { rot: [Math.PI / 2, 0, 0], emit: 1.2 }),
         ...crystalsRing(5, 1.25, 0.05, 0.12, 0.6),
       ]),
-      moving: build([part(cyl(0.3, 0.42, 2.2, 8), 0xbaf6ff, [0, 1.35, 0], { emit: 0.55 }), part(cyl(0.2, 0.3, 2.3, 6), 0xffffff, [0, 1.35, 0], { emit: 0.6 })]),
+      moving: build([part(cyl(0.22, 0.34, 2.2, 7), 0x6fe9ff, [0, 1.35, 0], { emit: 0.9 }), part(cyl(0.1, 0.16, 2.3, 5), 0xd8fbff, [0, 1.35, 0], { emit: 1 })]),
       animate(t, o) {
         const p = 1 + Math.sin(t * 5) * 0.12;
         o.position.set(0, 0, 0);

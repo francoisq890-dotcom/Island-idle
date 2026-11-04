@@ -172,6 +172,7 @@ button { font-family: inherit; color: inherit; }
   transform-origin: 50% 100%;
 }
 .tip.on { opacity: 1; }
+.tip.below::after { bottom: auto; top: -8px; transform: translateX(-50%) rotate(225deg); }
 .tip::after {
   content: ''; position: absolute; left: 50%; bottom: -8px; width: 14px; height: 14px; transform: translateX(-50%) rotate(45deg);
   background: var(--glass-strong); border-right: 1px solid var(--glass-line); border-bottom: 1px solid var(--glass-line);

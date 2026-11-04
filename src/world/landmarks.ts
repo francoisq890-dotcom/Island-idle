@@ -294,6 +294,7 @@ export class Beacon {
   private ring: THREE.Mesh;
   private arrow: THREE.Mesh;
   private mat = new THREE.MeshBasicMaterial({ color: 0xfff1b0, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending });
+  private arrowMat = new THREE.MeshBasicMaterial({ color: 0xfff1b0, transparent: true, opacity: 0.95, depthWrite: false });
   private shown = 0;
   private target = new THREE.Vector3();
   private visibleTarget = false;
@@ -301,7 +302,7 @@ export class Beacon {
   constructor(private tweens: Tweens) {
     this.ring = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.15, 32), this.mat);
     this.ring.rotation.x = -Math.PI / 2;
-    this.arrow = new THREE.Mesh(new THREE.ConeGeometry(0.32, 0.7, 4), this.mat);
+    this.arrow = new THREE.Mesh(new THREE.ConeGeometry(0.32, 0.7, 4), this.arrowMat);
     this.arrow.rotation.x = Math.PI;
     this.group.add(this.ring, this.arrow);
     this.group.visible = false;
@@ -337,5 +338,6 @@ export class Beacon {
     this.ring.position.y = 0.08;
     this.mat.opacity = 0.85 * this.shown * (1 - ((time * 0.8) % 1) * 0.6);
     this.arrow.scale.setScalar(this.shown);
+    this.arrowMat.opacity = 0.95 * this.shown;
   }
 }

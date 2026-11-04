@@ -28,6 +28,7 @@ export class Input {
   private joyEl: HTMLDivElement;
   private joyKnob: HTMLDivElement;
   enabled = true;
+  private pinch = 0;
 
   constructor(private el: HTMLElement) {
     window.addEventListener('keydown', (e) => {
@@ -149,6 +150,18 @@ export class Input {
     }
     const d = this.drags.get(e.pointerId);
     if (!d) return;
+    if (this.drags.size === 2) {
+      // Pinch to zoom.
+      d.x = e.clientX;
+      d.y = e.clientY;
+      d.moved = true;
+      const [a, b] = [...this.drags.values()];
+      const dist = Math.hypot(a.x - b.x, a.y - b.y);
+      if (this.pinch > 0) this.zoomDelta += (this.pinch - dist) / 40;
+      this.pinch = dist;
+      return;
+    }
+    this.pinch = 0;
     const dx = e.clientX - d.x;
     const dy = e.clientY - d.y;
     d.x = e.clientX;
@@ -172,6 +185,7 @@ export class Input {
     const d = this.drags.get(e.pointerId);
     if (!d) return;
     this.drags.delete(e.pointerId);
+    this.pinch = 0;
     if (!cancelled && !d.moved && d.button === 0 && this.enabled) this.clicks.push({ x: e.clientX, y: e.clientY });
   }
 

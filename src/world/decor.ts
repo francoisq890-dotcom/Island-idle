@@ -96,7 +96,7 @@ export function createDecor(exclusion: Exclusion, themes: Record<string, GrassTh
   const leafMat = makeMaterial({ roughness: 0.85 });
   const solidMat = makeMaterial({ roughness: 0.95 });
   const flowerMat = makeMaterial({ roughness: 0.6, emissiveIntensity: 1.2 });
-  const cloudMat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 1, emissive: 0xffe9dc, emissiveIntensity: 0.35, fog: true });
+  const cloudMat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 1, emissive: 0xffe4d6, emissiveIntensity: 0.12, fog: true, color: 0xf7ece8 });
 
   const MAX_TREES = 140;
   const round = instanced(treeRoundGeo(), leafMat, MAX_TREES);
@@ -118,11 +118,11 @@ export function createDecor(exclusion: Exclusion, themes: Record<string, GrassTh
   for (let i = 0; i < 220; i++) {
     const a = rc() * Math.PI * 2;
     const high = i < 30;
-    const d = high ? 75 + rc() * 170 : 20 + Math.pow(rc(), 0.7) * 230;
+    const d = high ? 75 + rc() * 170 : 28 + Math.pow(rc(), 0.7) * 230;
     seaClouds.push({
       x: Math.cos(a) * d,
       z: Math.sin(a) * d - 15,
-      y: high ? 2 + rc() * 18 : -38 - rc() * 14 + d * 0.04,
+      y: high ? 2 + rc() * 18 : -46 - rc() * 14 + d * 0.05,
       s: high ? 2 + rc() * 2.5 : 5 + rc() * 7,
       r: rc() * Math.PI,
       speed: (high ? 1.2 : 0.4) * (0.5 + rc()),
