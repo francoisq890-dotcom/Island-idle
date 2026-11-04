@@ -138,6 +138,102 @@ export class Audio {
   update(dt: number): void {
     this.comboTimer -= dt;
     if (this.comboTimer <= 0) this.combo = 0;
+    this.updateAmbience(dt);
+  }
+
+  // --- Island soundscapes ---------------------------------------------------------
+
+  private amb: Record<string, { gain: GainNode; level: number; target: number; timer: number }> = {};
+  private ambZone = 'home';
+
+  ambZoneOr(fallback: string): string {
+    return this.ambZone || fallback;
+  }
+
+  /** Which island the player stands on (crossfades the soundscapes). */
+  setZone(zone: string): void {
+    this.ambZone = zone;
+  }
+
+  private ensureAmbience(): void {
+    if (!this.ctx || this.amb.home) return;
+    const ctx = this.ctx;
+    for (const z of ['home', 'forge', 'geyser', 'sky']) {
+      const g = ctx.createGain();
+      g.gain.value = 0;
+      g.connect(this.music);
+      this.amb[z] = { gain: g, level: 0, target: 0, timer: Math.random() * 2 };
+    }
+    // Continuous beds: lava rumble (forge), hiss (geyser), high wind (sky).
+    const bed = (zone: string, type: BiquadFilterType, freq: number, q: number, vol: number) => {
+      const src = ctx.createBufferSource();
+      src.buffer = this.noiseBuf;
+      src.loop = true;
+      const f = ctx.createBiquadFilter();
+      f.type = type;
+      f.frequency.value = freq;
+      f.Q.value = q;
+      const g = ctx.createGain();
+      g.gain.value = vol;
+      src.connect(f);
+      f.connect(g);
+      g.connect(this.amb[zone].gain);
+      src.start(0, Math.random());
+    };
+    bed('forge', 'lowpass', 140, 0.7, 0.5);
+    bed('geyser', 'bandpass', 3200, 0.6, 0.06);
+    bed('sky', 'bandpass', 1800, 0.4, 0.07);
+  }
+
+  private ambTone(zone: string, freq: number, o: { type?: OscillatorType; decay: number; gain: number; glide?: number; when?: number }): void {
+    const ctx = this.ctx!;
+    const t = ctx.currentTime + (o.when ?? 0);
+    const osc = ctx.createOscillator();
+    osc.type = o.type ?? 'sine';
+    osc.frequency.setValueAtTime(freq, t);
+    if (o.glide) osc.frequency.exponentialRampToValueAtTime(freq * o.glide, t + o.decay);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(o.gain, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + o.decay);
+    osc.connect(g);
+    g.connect(this.amb[zone].gain);
+    osc.start(t);
+    osc.stop(t + o.decay + 0.05);
+  }
+
+  private updateAmbience(dt: number): void {
+    if (!this.ctx) return;
+    this.ensureAmbience();
+    for (const z in this.amb) {
+      const a = this.amb[z];
+      a.target = z === this.ambZone ? 1 : 0;
+      a.level += (a.target - a.level) * Math.min(1, dt * 0.8);
+      a.gain.gain.setTargetAtTime(a.level * 0.9, this.ctx.currentTime, 0.1);
+      if (a.level < 0.05) continue;
+      a.timer -= dt;
+      if (a.timer > 0) continue;
+      if (z === 'home') {
+        // Birds: short chirps made of fast pitch sweeps.
+        a.timer = 1.5 + Math.random() * 4;
+        const f = 2400 + Math.random() * 1400;
+        const n = 2 + Math.floor(Math.random() * 3);
+        for (let i = 0; i < n; i++) this.ambTone(z, f * (1 + Math.random() * 0.1), { decay: 0.09, gain: 0.025, glide: 1.35, when: i * 0.11 });
+      } else if (z === 'forge') {
+        // Lava crackles.
+        a.timer = 0.15 + Math.random() * 0.6;
+        this.ambTone(z, 120 + Math.random() * 400, { type: 'square', decay: 0.03, gain: 0.02 });
+      } else if (z === 'geyser') {
+        // Bubbles rising in pitch.
+        a.timer = 0.2 + Math.random() * 0.7;
+        this.ambTone(z, 300 + Math.random() * 300, { decay: 0.12, gain: 0.03, glide: 2.2 });
+      } else {
+        // Sky: distant glass chimes.
+        a.timer = 2 + Math.random() * 4;
+        const notes = [86, 88, 91, 93, 95, 98];
+        this.ambTone(z, this.midi(notes[Math.floor(Math.random() * notes.length)]), { decay: 2.5, gain: 0.02 });
+      }
+    }
   }
 
   // --- Sound effects ------------------------------------------------------------

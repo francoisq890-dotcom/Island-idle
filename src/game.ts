@@ -87,6 +87,8 @@ export class Game {
   private goldenIt!: Interactable;
   private nextMeteor = between(EVENTS.meteor.first);
   private nextGolden = between(EVENTS.golden.first);
+  private combo = 0;
+  private lastHitTime = -9;
   private incomeAcc = 0;
   private lumenAcc = 0;
   private incomeTimer = 0;
@@ -287,6 +289,8 @@ export class Game {
 
     this.world.update(dt, this.state);
     this.updateEvents(dt);
+    const isl = this.world.ground.islandAt(this.world.player.position.x, this.world.player.position.z, -3);
+    this.audio.setZone(isl ? isl.zone : this.audio.ambZoneOr('home'));
     this.updateUi(dt);
     this.hud.update(dt);
 
@@ -394,12 +398,29 @@ export class Game {
   // Actions
   // ---------------------------------------------------------------------------
 
+  /** Chained strikes (cosmetic): a growing "Série ×N" label and sparks at milestones. */
+  private bumpCombo(): void {
+    this.combo = this.time - this.lastHitTime < 1.1 ? this.combo + 1 : 1;
+    this.lastHitTime = this.time;
+    const n = this.combo;
+    if (n >= 5 && n % 5 === 0) {
+      const hp = this.world.impactPoint();
+      const big = n >= 50 ? 'huge' : n >= 20 ? 'big' : '';
+      this.hud.float(hp.x - 0.8, hp.y + 1.8, hp.z, `Série ×${n}`, `text ${big}`, 1.1);
+      if (n % 25 === 0) {
+        this.world.particles.sparks(hp.clone().setY(hp.y + 1), { count: 30 + n, color: PALETTE.lumen, speed: 7, life: 1, size: 0.09, up: 4 });
+        this.audio.achievement();
+      }
+    }
+  }
+
   /** Swing the pickaxe at the crystal; the gain lands on the impact frame. */
   private doHarvest(): void {
     this.state.flags.nearCrystal = true;
     this.world.player.requestStrike(this.world.crystal.position, () => {
       const { value: v, crit } = harvestEx(this.state, this.rates);
       this.world.harvestFx(crit ? v * 3 : v);
+      this.bumpCombo();
       this.audio.harvest(this.world.player.pickTierIndex);
       const hp = this.world.impactPoint();
       if (crit) {

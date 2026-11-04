@@ -595,3 +595,5 @@ table.odds .ef { color: var(--ink-soft); font-size: 14px; }
 .cstar .ico { width: 26px; height: 26px; }
 .cstar.on { opacity: 1; filter: drop-shadow(0 0 8px #c59bff); animation: twinkle 2.4s ease-in-out infinite; }
 @keyframes twinkle { 50% { transform: scale(1.18); } }
+.float.text.big { font-size: 30px; }
+.float.text.huge { font-size: 40px; -webkit-text-stroke-width: 5px; }
