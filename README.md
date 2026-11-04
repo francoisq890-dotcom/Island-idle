@@ -30,75 +30,89 @@ Autres commandes :
 
 | Action | Clavier / souris | Tactile |
 |---|---|---|
-| Marcher | **ZQSD** (AZERTY) ou **WASD** (QWERTY) ou flèches | joystick : glisser sur la moitié gauche de l’écran |
+| Marcher | **ZQSD** (AZERTY) ou **WASD** (QWERTY) ou flèches, diagonales comprises | joystick : glisser sur la moitié gauche de l’écran |
 | Tourner la caméra | glisser avec la souris | glisser sur la moitié droite |
 | Zoom | molette | pincer |
-| Récolter | clic sur le cristal, ou **E** à côté (maintenir E = 3 coups/s) | toucher le cristal, ou bouton **Action** (maintenir) |
-| Construire / interagir | **E** près d’un chantier, d’un pont, du Phare (ou clic dessus) | bouton **Action** |
+| Frapper le cristal | clic dessus, ou **E** à côté (maintenir = coups enchaînés) | toucher le cristal, ou bouton **Action** (maintenir) |
+| Construire / interagir | **E** près d’un chantier, d’un pont, d’un autel, du Phare (ou clic dessus) | bouton **Action** |
 | Sauter | **Espace** | bouton flèche |
 | Atelier (machines, améliorations) | **B** | bouton marteau |
+| Autel des runes | **R** (ou E devant un autel) | bouton rune |
+| Journal (succès, constellations) | **J** | bouton trophée |
 | Phare (prestige) | **P** | bouton Phare |
 | Son on/off | **M** | bouton haut-parleur |
-| Menu (réglages, sauvegarde, stats) | **Échap** | bouton menu |
+| Carnet de bord (réglages, sauvegarde, stats) | **Échap** | bouton carnet |
 
-## Ce qui est fait
+Le clavier fonctionne en AZERTY comme en QWERTY, y compris dans les navigateurs qui renvoient des codes de touches dépendants de la disposition (voir DECISIONS.md § 1).
 
-- **Monde 3D** entièrement généré en code : 4 îles flottantes low-poly (Île Mère, Îlot des Forges volcanique, Îlot des Geysers turquoise, Île Céleste lavande), mer de nuages animée, rochers flottants, arbres / herbes / fleurs instanciés, lumière chaude, ombres, brouillard, bloom sur les cristaux, étalonnage + vignettage.
-- **Personnage** animé (marche, respiration, saut, coup de pioche), caméra 3e personne amortie, collisions, les arbres entre la caméra et le joueur s’effacent.
-- **Récolte manuelle** avec retour fort : particules, éclat lumineux du cristal, nombre qui s’envole, son cristallin dont la note monte en combo, léger screen shake.
-- **5 machines** placées physiquement (foreuse, excavatrice, raffinerie, geyser d’éther, prisme solaire), animées, avec hologramme du prochain emplacement, apparition animée, paliers visibles (×2 à 25/50/100…, les machines grandissent et changent de teinte).
-- **Convoyeurs** automatiques : les cubes cyan (éclats) et dorés (Lumen) circulent jusqu’au Nexus, la densité suit la production ; le Nexus tourne plus vite et pulse à chaque arrivée.
-- **3 ponts** à construire (cinématique : les planches jaillissent une à une), nouvelles zones atteintes à pied.
-- **20 améliorations**, coûts exponentiels `base × 1.15^n`, tout dans `src/config/economy.ts`.
-- **Prestige** « faire descendre l’île » au Phare des étoiles : explication claire (gains / pertes), séquence cinématique, la nouvelle île repousse avec une nouvelle saison, bonus permanent +10 % par Graine d’étoile.
-- **Hors-ligne** : production exacte pendant l’absence (max 8 h) + écran « Bon retour ! ».
-- **HUD minimal** : ressources + taux/s, nombres formatés (1.2K, 3.4M… puis notation scientifique), info-bulles au survol et à l’approche (production, part du total, prochain palier, temps restant avant de pouvoir acheter).
-- **Tutoriel diégétique** : 17 objectifs courts avec barre de progression, balise lumineuse dans le monde et flèche au bord de l’écran, puis objectifs dynamiques.
-- **Audio 100 % synthétisé** (Web Audio) : effets + musique d’ambiance générative + vent.
-- **Sauvegarde** automatique (10 s + fermeture), versionnée avec migrations, export/import en texte (`ILES1.…`).
-- **Mobile** : joystick tactile, boutons Action/Saut, pincer pour zoomer, mise en page adaptée.
-- **Performance** : instancing partout, ~130 draw calls toutes passes comprises sur une partie avancée, résolution adaptative, mode « Économie ».
-- **Tests** Vitest (24 tests) + **simulation d’équilibrage** exécutés aussi en CI avant chaque déploiement.
+## Nouveautés de l’itération 2
 
-## Équilibrage (résultat de `npm run simulate`)
+- **Déplacement corrigé** et couvert par un test Playwright automatique : 41 cas (QWERTY, AZERTY, codes dépendants de la disposition, codes vides, flèches, diagonales, caméra tournée, joystick, sortie d’une machine construite sur le joueur).
+- **Vraie frappe de pioche** : armé au-dessus de l’épaule, anticipation, arc rapide vers le cristal, *hit-stop*, étincelles, rebond. L’explorateur se tourne et fait un pas vers sa cible. **7 pioches** au look de plus en plus spectaculaire (traînées, lumière, éclats en orbite), avec une scène de « nouvelle pioche ».
+- **Nouvelle interface « Carnet du Cartographe »** : vélin, laiton, encre, polices Fraunces et Alegreya Sans, icônes SVG dessinées pour le jeu, boutons-sceaux, panneaux qui se déplient, sons d’interface.
+- **Runes** :
+  - 4 autels (un par île), 28 runes en 7 raretés jusqu’à 1 sur 1 million, probabilités affichées et ajustées par la chance ;
+  - charge, cadence et tirage automatique ;
+  - célébration au ralenti pour les grandes raretés ;
+  - index de collection ;
+  - les runes légendaires et plus survivent au prestige.
+- **Événements** : pluie de météores et cristal doré. **Coups critiques**, **32 succès** à bonus permanents, **synergies** entre machines.
+- **Constellations** : objectif de long terme après le premier prestige, avec des avantages permanents pour chaque nouvelle île.
+- **Rééquilibrage complet** avec un bot qui utilise tous ces systèmes (voir plus bas).
+- Les sauvegardes de la première version sont **migrées automatiquement** (format v2).
 
-| Profil du bot | Pont des Forges | Pont des Geysers | Île Céleste | Prestige dispo |
-|---|---|---|---|---|
-| Actif (3 clics/s) | ~2 min 50 | ~8 min 25 | ~20 min | **~32 min** |
-| Moyen (2 clics/s, 10 min) | ~3 min 10 | ~8 min 55 | ~25 min | **~41 min** |
-| Paresseux (1 clic/s, 3 min) | ~3 min 45 | ~9 min 30 | ~27 min | **~43 min** |
+## Ce que contient le jeu
 
-Plus longue attente entre deux achats pendant les 10 premières minutes : ~1 min 30 (cible : < 3 min). Le bot est quasi optimal ; un humain qui explore sera un peu plus lent.
+- **Monde 3D** généré en code : 4 îles flottantes, mer de nuages, lumière de coucher de soleil, ombres, bloom, étalonnage. Les arbres qui masquent le joueur s’effacent.
+- **5 machines** posées physiquement sur l’île, animées, avec paliers (×2 à 25/50/100…). Des **convoyeurs** amènent cubes d’éclats et de Lumen jusqu’au Nexus.
+- **3 ponts** construits en cinématique, **20 améliorations + 4 synergies**.
+- **Prestige** au Phare des étoiles : l’île descend dans les nuages et repousse avec une nouvelle saison. Les graines d’étoile donnent +5 % de production chacune ; le Phare demande davantage à chaque île.
+- **Hors-ligne** (8 h max) avec écran « Bon retour ! ». **Tutoriel** de 18 objectifs avec balise et flèche au bord de l’écran.
+- **Audio 100 % synthétisé** : effets, carillons des runes, fanfares, musique générative.
+- **Sauvegarde** automatique versionnée, export/import texte.
+- **Tests** : 46 tests Vitest (économie, runes, succès, sauvegarde et migration, hors-ligne, clavier, collisions, équilibrage) + test Playwright de déplacement, lancés en CI avant chaque déploiement.
+
+## Équilibrage (`npm run simulate`)
+
+| Profil du bot | 1er prestige | Attente max. au début | Remarque |
+|---|---|---|---|
+| Moyen (2 coups/s pendant 10 min) | **36 min** | 40 s | sans runes : 59 min (runes ×1,6) |
+| Paresseux (1 coup/s pendant 3 min) | **40 min** | 46 s | |
+| Optimal (3 coups/s sans pause, sans marcher) | 26 min | 35 s | borne basse, un humain est plus lent |
+| 2e île (profil moyen) | **8 min** | | 54 graines au lieu de 32 |
 
 ## Déploiement (GitHub Pages)
 
-Le workflow `.github/workflows/deploy.yml` teste, simule, construit et publie `dist/` sur GitHub Pages à chaque push sur `main` (et sur la branche de développement).
-Une seule action manuelle est nécessaire la première fois : **Settings → Pages → Source : « GitHub Actions »**. Si l’environnement `github-pages` refuse la branche de développement, fusionne-la dans `main` (ou autorise la branche dans *Settings → Environments → github-pages*).
+Le workflow `.github/workflows/deploy.yml` lance les tests unitaires, la simulation, le test de déplacement, construit le jeu et publie `dist/` sur GitHub Pages à chaque push sur `main`.
 
-## Vérification visuelle
+## Tests
 
-Le jeu a été vérifié avec Chromium headless (Playwright, WebGL logiciel) : écran titre, tutoriel, récolte, construction, toutes les îles, panneaux, écran hors-ligne, séquence de prestige et affichage mobile ont été capturés et inspectés pendant le développement.
+```bash
+npm test            # Vitest : 46 tests
+npm run test:e2e    # Playwright : déplacement clavier (AZERTY/QWERTY) et joystick
+npm run simulate    # rapport d’équilibrage
+```
 
 ## Limites connues / reste à faire
 
-- Le rendu logiciel headless est lent, donc les 60 fps n’ont pas pu être mesurés sur une vraie carte graphique ici ; la résolution adaptative compense automatiquement si un appareil peine.
-- Contenu : une seule couche de prestige et 5 machines (~40 min pour la première île, plus rapide ensuite). Pistes : arbre de talents payé en graines, événements aléatoires (pluie de cristaux), succès, plus de saisons.
-- Pas de remappage des touches (les touches physiques sont utilisées, donc ZQSD et WASD marchent tous les deux).
-- Au-delà du nombre d’emplacements d’un chantier (5 à 12), les nouvelles machines ne sont plus ajoutées visuellement : ce sont les machines existantes qui grandissent et changent de teinte à chaque palier.
-- Textes en français uniquement.
+- Les 60 fps n’ont pas pu être mesurés sur une vraie carte graphique ici (rendu logiciel en headless). Les compteurs sont raisonnables : ~150 appels de dessin toutes passes comprises sur une partie avancée. La résolution adaptative et le mode « Économie » compensent.
+- Le bug « seule Z fonctionne » n’a pas pu être reproduit à l’identique dans Chromium. Trois vraies causes ont été trouvées et corrigées (codes de touches dépendants de la disposition ou vides, joueur emprisonné par une machine, focus capturé par un curseur). Si le problème persiste chez toi, le nom et la version de ton navigateur m’aideraient.
+- Au-delà des emplacements d’un chantier (5 à 12), les nouvelles machines ne s’ajoutent plus visuellement : celles qui existent grandissent et changent de teinte aux paliers.
+- Pas de remappage des touches ; textes en français uniquement.
+- Le bot d’équilibrage est quasi optimal : un joueur réel mettra un peu plus longtemps que les chiffres ci-dessus.
 
 ## Structure
 
 ```
-src/config/    économie (fichier unique), palette, disposition du monde
-src/economy/   règles pures, hors-ligne, objectifs, bot de simulation
-src/save/      sauvegarde versionnée
-src/world/     rendu 3D : terrain, décor, machines, convoyeurs, ponts, joueur, caméra, particules
-src/ui/        HUD, panneaux, icônes, CSS
+src/config/    économie, runes, succès, événements, constellations, palette, disposition du monde
+src/economy/   règles pures (économie, runes, succès, bonus, hors-ligne, objectifs, bot de simulation)
+src/save/      sauvegarde versionnée + migrations
+src/world/     rendu 3D : terrain, décor, machines, convoyeurs, ponts, autels, événements, joueur, pioches, caméra, particules
+src/ui/        HUD, panneaux (Atelier, Autel des runes, Journal, Carnet de bord), icônes, CSS
 src/audio/     synthèse sonore
 src/game.ts    orchestration
 tests/         Vitest
-scripts/       simulation d’équilibrage, captures d’écran Playwright
+scripts/       simulation, test de déplacement Playwright, captures d’écran
 ```
 
-Voir **DECISIONS.md** pour les choix de design et de technique.
+Voir **DECISIONS.md** pour les choix de design et de technique (et la direction artistique de l’interface).
