@@ -16,6 +16,9 @@ function boot(): void {
     return;
   }
   game.run();
+  if (game.state.stats.playSeconds > 5) {
+    title.querySelector('.start')!.textContent = 'Continuer';
+  }
   // Expose for debugging / automated screenshots.
   (window as unknown as { game: Game }).game = game;
   requestAnimationFrame(() => loading.classList.add('out'));
