@@ -101,3 +101,30 @@ Palette restreinte (`src/config/palette.ts`) : ciel lavande → pêche, herbes v
 - Placement libre des machines sur une grille : remplacé par des chantiers balisés (plus lisible, moins de friction).
 - Une 3e ressource intermédiaire et un arbre de prestige : le brief demande un prestige « simple et bien expliqué ».
 - Des modèles importés : tout est procédural, ce qui garde une cohérence artistique parfaite.
+
+---
+
+# Itération 2
+
+## 1. Bug de déplacement (« seule Z fonctionne »)
+
+**Enquête.** Le symptôme exact n'a pas pu être reproduit dans Chromium. J'ai testé la logique du joueur à 60 et 144 Hz, de vrais événements clavier, le build de production et des événements reproduisant exactement un clavier AZERTY (`key: 'q'`, `code: 'KeyA'`) : tout bougeait. En cherchant ce qui pouvait différer chez un joueur, j'ai trouvé trois vraies causes. Chacune donne « j'appuie et rien ne se passe » :
+
+1. **Dépendance stricte à `KeyboardEvent.code` sur quatre valeurs (KeyW/A/S/D).** `code` est censé être physique, mais certains environnements renvoient un code *dépendant de la disposition* ou *vide* : Firefox avec `privacy.resistFingerprinting` (aussi Tor, LibreWolf, Mullvad), certaines VM, bureaux à distance et claviers matériels mobiles. En AZERTY on reçoit alors `KeyZ`/`KeyQ`, que l'ancien code ignorait. Avec un `code` vide, plus aucune direction ne marche.
+2. **Le joueur pouvait être emprisonné dans un décor.** Le premier emplacement de foreuse est à ~0,9 m du panneau où l'on appuie sur E. La foreuse apparaissait donc souvent *sur* le joueur. Le contrôleur refusait toute position à l'intérieur d'un obstacle, y compris pour en sortir : toutes les touches semblaient mortes.
+3. **Focus capturé.** Après avoir touché un curseur de volume ou un menu déroulant, le focus restait sur ce contrôle et toutes les touches étaient ignorées.
+
+**Correctifs (à la racine, pas des rustines).**
+- Le clavier est traduit en **actions** (`up/down/left/right`). La référence reste `code` (physique), et les deux jeux de lettres sont mappés (`KeyW|KeyZ` = avancer, `KeyA|KeyQ` = gauche). Quand `code` est vide ou « Unidentified », on se rabat sur `key` (z/w/q/a/s/d, flèches). Les touches tenues sont suivies par jeton (code, ou `key:x`), pour qu'un `keyup` relâche toujours la bonne touche.
+- Toutes les touches sont relâchées à la perte de focus, au changement d'onglet et quand on tape dans un champ texte (plus de joueur qui « court tout seul »). Un appui clavier retire le focus des boutons, curseurs et listes.
+- Collisions : `Ground.canMove(from, to)` accepte un déplacement s'il mène sur un sol libre, **ou** s'il réduit le chevauchement quand le joueur est déjà dans un obstacle. On ne peut plus être coincé.
+- Le mode tactile n'est plus activé sur les PC portables à écran tactile (`'ontouchstart' in window` était vrai sur ces machines) ; il s'active au premier vrai toucher.
+
+**Tests.**
+- `npm run test:e2e` (Playwright) : 41 cas vérifiés, chacun relatif à la caméra (avec deux orientations de caméra) avec une tolérance d'angle.
+  - Claviers : QWERTY, AZERTY, codes dépendant de la disposition, codes vides, flèches.
+  - Diagonales, avec un vecteur d'entrée normalisé à 1.
+  - Sortie d'une machine construite sur le joueur.
+  - Joystick tactile dans les 4 directions.
+- Sur l'ancien code, ce test échoue sur 7 cas, ce qui prouve qu'il couvre bien le bug. Il tourne en CI avant chaque déploiement.
+- Tests unitaires du mapping et des collisions : `tests/input.test.ts`.

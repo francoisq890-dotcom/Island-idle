@@ -168,13 +168,15 @@ export class Player {
     const nx = this.position.x + this.velocity.x * dt;
     const nz = this.position.z + this.velocity.z * dt;
     const before = this.position.clone();
-    if (ground.walkable(nx, nz)) {
+    const px = this.position.x;
+    const pz = this.position.z;
+    if (ground.canMove(px, pz, nx, nz)) {
       this.position.x = nx;
       this.position.z = nz;
-    } else if (ground.walkable(nx, this.position.z)) {
+    } else if (ground.canMove(px, pz, nx, pz)) {
       this.position.x = nx;
       this.velocity.z *= 0.5;
-    } else if (ground.walkable(this.position.x, nz)) {
+    } else if (ground.canMove(px, pz, px, nz)) {
       this.position.z = nz;
       this.velocity.x *= 0.5;
     } else {

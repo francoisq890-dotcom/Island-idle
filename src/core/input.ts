@@ -8,8 +8,73 @@ export interface ClickEvent {
   y: number;
 }
 
+/**
+ * Movement actions. Physical keys (KeyboardEvent.code) are the reference:
+ * ZQSD on AZERTY and WASD on QWERTY are the same physical keys.
+ * Both letter sets are mapped so the game keeps working when a browser reports
+ * layout-dependent codes (e.g. Firefox "resistFingerprinting", some VMs and
+ * remote desktops): there, AZERTY Z arrives as "KeyZ" and Q as "KeyQ".
+ */
+export type MoveAction = 'up' | 'down' | 'left' | 'right';
+
+const CODE_ACTIONS: Record<string, MoveAction> = {
+  KeyW: 'up',
+  KeyZ: 'up',
+  ArrowUp: 'up',
+  KeyS: 'down',
+  ArrowDown: 'down',
+  KeyA: 'left',
+  KeyQ: 'left',
+  ArrowLeft: 'left',
+  KeyD: 'right',
+  ArrowRight: 'right',
+};
+
+/** Fallback when `code` is empty / unidentified (some virtual or remote keyboards). */
+const KEY_ACTIONS: Record<string, MoveAction> = {
+  z: 'up',
+  w: 'up',
+  arrowup: 'up',
+  s: 'down',
+  arrowdown: 'down',
+  q: 'left',
+  a: 'left',
+  arrowleft: 'left',
+  d: 'right',
+  arrowright: 'right',
+};
+
+/** Stable identifier of a physical key: its code, or its key value when the code is missing. */
+export function keyToken(e: { code: string; key: string }): string {
+  return e.code && e.code !== 'Unidentified' ? e.code : `key:${(e.key || '').toLowerCase()}`;
+}
+
+/** Movement action of a key event, or null. */
+export function actionOf(e: { code: string; key: string }): MoveAction | null {
+  if (e.code && e.code !== 'Unidentified') return CODE_ACTIONS[e.code] ?? null;
+  return KEY_ACTIONS[(e.key || '').toLowerCase()] ?? null;
+}
+
+/** Pure helper (unit-tested): movement vector from held actions + joystick, normalized. */
+export function moveVector(held: Set<MoveAction>, joyX = 0, joyY = 0): { x: number; y: number } {
+  let x = joyX;
+  let y = joyY;
+  if (held.has('up')) y += 1;
+  if (held.has('down')) y -= 1;
+  if (held.has('left')) x -= 1;
+  if (held.has('right')) x += 1;
+  const len = Math.hypot(x, y);
+  if (len > 1) {
+    x /= len;
+    y /= len;
+  }
+  return { x, y };
+}
+
 export class Input {
   readonly keys = new Set<string>();
+  /** Token → movement action, for keys currently held. */
+  private heldMoves = new Map<string, MoveAction>();
   private pressedThisFrame = new Set<string>();
   /** Movement intent in [-1,1]², x = right, y = forward. */
   readonly move = { x: 0, y: 0 };
@@ -33,13 +98,37 @@ export class Input {
   constructor(private el: HTMLElement) {
     window.addEventListener('keydown', (e) => {
       if (isTyping(e)) return;
-      if (!this.keys.has(e.code)) this.pressedThisFrame.add(e.code);
-      this.keys.add(e.code);
+      // A form control (slider, select, button) keeping the focus must never eat game keys.
+      blurControls();
+      const tok = keyToken(e);
+      if (!this.keys.has(tok)) this.pressedThisFrame.add(tok);
+      this.keys.add(tok);
+      if (e.code && tok !== e.code) this.keys.add(e.code);
+      const act = actionOf(e);
+      if (act) {
+        this.heldMoves.set(tok, act);
+        e.preventDefault();
+      }
       this.lastActivity = performance.now();
-      if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.code)) e.preventDefault();
+      if (['Space', 'Tab'].includes(e.code)) e.preventDefault();
     });
-    window.addEventListener('keyup', (e) => this.keys.delete(e.code));
-    window.addEventListener('blur', () => this.keys.clear());
+    window.addEventListener('keyup', (e) => {
+      const tok = keyToken(e);
+      this.keys.delete(tok);
+      this.keys.delete(e.code);
+      this.heldMoves.delete(tok);
+    });
+    const releaseAll = () => {
+      this.keys.clear();
+      this.heldMoves.clear();
+    };
+    window.addEventListener('blur', releaseAll);
+    document.addEventListener('visibilitychange', releaseAll);
+    // Typing in a text field releases movement keys so the player doesn't run off.
+    document.addEventListener('focusin', (e) => {
+      const t = e.target as HTMLElement;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) releaseAll();
+    });
 
     el.addEventListener('pointerdown', (e) => this.onDown(e));
     window.addEventListener('pointermove', (e) => this.onMove(e));
@@ -63,7 +152,7 @@ export class Input {
     this.joyEl.appendChild(this.joyKnob);
     document.body.appendChild(this.joyEl);
 
-    this.isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+    this.isTouch = matchMedia('(pointer: coarse)').matches;
     document.body.classList.toggle('touch', this.isTouch);
   }
 
@@ -85,25 +174,14 @@ export class Input {
   }
 
   update(): void {
-    let x = 0;
-    let y = 0;
-    if (this.enabled) {
-      if (this.held('KeyW', 'ArrowUp')) y += 1;
-      if (this.held('KeyS', 'ArrowDown')) y -= 1;
-      if (this.held('KeyA', 'ArrowLeft')) x -= 1;
-      if (this.held('KeyD', 'ArrowRight')) x += 1;
-      if (this.joy.id >= 0) {
-        x += this.joy.x;
-        y += this.joy.y;
-      }
+    if (!this.enabled) {
+      this.move.x = this.move.y = 0;
+      return;
     }
-    const len = Math.hypot(x, y);
-    if (len > 1) {
-      x /= len;
-      y /= len;
-    }
-    this.move.x = x;
-    this.move.y = y;
+    const acts = new Set(this.heldMoves.values());
+    const v = moveVector(acts, this.joy.id >= 0 ? this.joy.x : 0, this.joy.id >= 0 ? this.joy.y : 0);
+    this.move.x = v.x;
+    this.move.y = v.y;
   }
 
   private onDown(e: PointerEvent): void {
@@ -198,7 +276,13 @@ export class Input {
   }
 }
 
+/** Remove focus from sliders / selects / buttons so the keyboard drives the game again. */
+function blurControls(): void {
+  const a = document.activeElement as HTMLElement | null;
+  if (a && (a.tagName === 'BUTTON' || a.tagName === 'SELECT' || (a.tagName === 'INPUT' && (a as HTMLInputElement).type !== 'text'))) a.blur();
+}
+
 function isTyping(e: KeyboardEvent): boolean {
   const t = e.target as HTMLElement | null;
-  return !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA');
+  return !!t && (t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && (t as HTMLInputElement).type === 'text'));
 }

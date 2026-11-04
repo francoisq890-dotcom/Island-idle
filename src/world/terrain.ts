@@ -96,17 +96,45 @@ export class Ground {
     return isl ? islandTopHeight(isl, x, z) : -50;
   }
 
-  walkable(x: number, z: number): boolean {
+  /** Solid ground (island of an unlocked zone, or a built bridge), ignoring props. */
+  onGround(x: number, z: number): boolean {
     const isl = this.islandAt(x, z, 0.9);
-    const onIsland = !!isl && this.unlocked[isl.zone];
-    if (!onIsland && !this.bridgeAt(x, z)) return false;
+    return (!!isl && this.unlocked[isl.zone]) || !!this.bridgeAt(x, z);
+  }
+
+  /** How deep (metres) the point is inside the props it overlaps (0 = free). */
+  overlap(x: number, z: number): number {
+    let worst = 0;
     for (const o of this.obstacles) {
       if (!o.active()) continue;
-      const dx = x - o.x;
-      const dz = z - o.z;
-      if (dx * dx + dz * dz < o.r * o.r) return false;
+      const d = Math.hypot(x - o.x, z - o.z);
+      if (d < o.r) worst = Math.max(worst, o.r - d);
     }
-    return true;
+    return worst;
+  }
+
+  walkable(x: number, z: number): boolean {
+    return this.onGround(x, z) && this.overlap(x, z) === 0;
+  }
+
+  /**
+   * Can the player go from (fx,fz) to (tx,tz)? Normally the target must be free.
+   * If the player is already overlapping a prop (a machine was just built on
+   * top of them), any move that gets them out of it is allowed, so they can
+   * never be trapped.
+   */
+  canMove(fx: number, fz: number, tx: number, tz: number): boolean {
+    if (!this.onGround(tx, tz)) return !this.onGround(fx, fz) && this.edgeDistance(tx, tz) < this.edgeDistance(fx, fz);
+    const o = this.overlap(tx, tz);
+    if (o === 0) return true;
+    return o < this.overlap(fx, fz) - 1e-6;
+  }
+
+  /** Distance to the nearest walkable island centre (used to rescue a player standing off the ground). */
+  private edgeDistance(x: number, z: number): number {
+    let d = Infinity;
+    for (const isl of ISLANDS) if (this.unlocked[isl.zone]) d = Math.min(d, Math.hypot(x - isl.cx, z - isl.cz) - isl.radius);
+    return d;
   }
 }
 
