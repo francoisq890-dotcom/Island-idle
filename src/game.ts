@@ -40,7 +40,7 @@ import { Celebration, RunePanel, runeEffect, statText as statTextFn } from './ui
 import { FAMILIES, RARITIES, RARITY_INDEX, type FamilyId, type RuneDef } from './config/runes';
 import { autoRollAllowed, buyAltarUpgrade, cooldownOf, doRoll, rollCostOf } from './economy/runes';
 import { EVENTS, between } from './config/events';
-import { hasPerk } from './config/constellations';
+import { CONSTELLATIONS, hasPerk } from './config/constellations';
 import { GoldenCrystal, MeteorField } from './world/events';
 import { addLumen, addShards } from './economy/economy';
 import { checkAchievements } from './economy/achievements';
@@ -837,6 +837,7 @@ export class Game {
       this.afterProgress();
       const ready = canPrestige(s);
       this.world.lighthouse.setAwake(ready);
+      this.world.lighthouse.setStars(CONSTELLATIONS.filter((c) => s.lifetimeSeeds >= c.seeds).length);
       this.hud.setPrestige(s.zones.sky, ready);
     }
 

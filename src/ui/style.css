@@ -576,7 +576,9 @@ table.odds .ef { color: var(--ink-soft); font-size: 14px; }
   .altar-top { grid-template-columns: 1fr; }
   .altar-roll { border-right: none; border-bottom: 1px dashed rgba(125,83,33,.5); padding-bottom: 10px; }
   .slab-art { width: 80px; height: 80px; }
-  table.odds .ef { display: none; }
+  table.odds .ef, table.odds .ic { display: none; }
+  table.odds .nm { white-space: normal; }
+  table.odds td { padding: 4px 3px; }
   .rune-grid { grid-template-columns: repeat(4, 1fr); }
   .celebrate .title { font-size: 30px; }
 }

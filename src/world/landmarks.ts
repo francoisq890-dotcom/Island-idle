@@ -198,6 +198,11 @@ export class Lighthouse {
   private awakeTarget = 0;
   readonly position: THREE.Vector3;
   readonly topPosition: THREE.Vector3;
+  /** One star per constellation, orbiting the lantern; lit ones glow. */
+  private stars: THREE.InstancedMesh;
+  private litStars = 0;
+  private starCol = new THREE.Color();
+  private starObj = new THREE.Object3D();
 
   constructor(at: V2, y: number) {
     this.position = new THREE.Vector3(at[0], y, at[1]);
@@ -240,6 +245,19 @@ export class Lighthouse {
     this.group.add(this.light);
     this.group.position.copy(this.position);
     this.topPosition = this.position.clone().add(new THREE.Vector3(0, 8.5, 0));
+    const starGeo = build([part(new THREE.OctahedronGeometry(0.22, 0), 0xffffff, [0, 0, 0], { emit: 1, scale: [0.8, 1.4, 0.8] })]);
+    this.stars = new THREE.InstancedMesh(starGeo, makeMaterial({ emissiveIntensity: 1.6 }), 7);
+    this.stars.frustumCulled = false;
+    for (let i = 0; i < 7; i++) this.stars.setColorAt(i, this.starCol.set(0x5c5470));
+    this.group.add(this.stars);
+  }
+
+  /** Light the first `n` constellation stars. */
+  setStars(n: number): void {
+    if (n === this.litStars) return;
+    this.litStars = n;
+    for (let i = 0; i < 7; i++) this.stars.setColorAt(i, this.starCol.set(i < n ? PALETTE.seed : 0x5c5470));
+    if (this.stars.instanceColor) this.stars.instanceColor.needsUpdate = true;
   }
 
   setAwake(v: boolean): void {
@@ -256,6 +274,17 @@ export class Lighthouse {
     this.beamMat.opacity = a * (0.13 + Math.sin(time * 2) * 0.03);
     this.beam.visible = a > 0.02;
     this.light.intensity = a * 12;
+    const o = this.starObj;
+    for (let i = 0; i < 7; i++) {
+      const ang = (i / 7) * Math.PI * 2 + time * 0.25;
+      const lit = i < this.litStars;
+      o.position.set(Math.cos(ang) * 2.4, 9.6 + Math.sin(time * 1.3 + i) * 0.25, Math.sin(ang) * 2.4);
+      o.rotation.set(0, time * 2 + i, 0);
+      o.scale.setScalar(lit ? 1 + Math.sin(time * 4 + i * 2) * 0.15 : 0.7);
+      o.updateMatrix();
+      this.stars.setMatrixAt(i, o.matrix);
+    }
+    this.stars.instanceMatrix.needsUpdate = true;
   }
 }
 
