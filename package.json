@@ -12,7 +12,8 @@
     "test:e2e": "node scripts/e2e-movement.mjs"
   },
   "dependencies": {
-    "@fontsource/fredoka": "^5.3.0",
+    "@fontsource-variable/fraunces": "^5.3.0",
+    "@fontsource/alegreya-sans": "^5.3.0",
     "three": "^0.187.0"
   },
   "devDependencies": {

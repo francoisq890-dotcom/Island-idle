@@ -37,7 +37,7 @@ export class Hud {
   private resSeeds = el('div', 'res seeds hide');
   private objective = el('div', 'objective out');
   private promptEl = el('div', 'prompt');
-  private tipEl = el('div', 'tip');
+  private tipEl = el('div', 'tip vellum-thin');
   private floaters = el('div', 'floaters');
   private toasts = el('div', 'toasts');
   private compassEl = el('div', 'compass', '<i></i>');
@@ -65,7 +65,7 @@ export class Hud {
     this.resSeeds.title = 'Graines d’étoile : bonus permanent de production (prestige)';
     resources.append(this.resShards, this.resLumen, this.resSeeds);
 
-    this.objective.innerHTML = `<div class="tag">Objectif</div><div class="text"></div><div class="hint"></div><div class="bar"><i></i></div><div class="count"></div>`;
+    this.objective.innerHTML = `<div class="tag">objectif</div><div class="text"></div><div class="hint"></div><div class="bar"><i></i></div><div class="count"></div>`;
 
     const btn = (cls: string, html: string, title: string) => {
       const b = el('button', 'btn ' + cls, html) as HTMLButtonElement;
@@ -75,7 +75,7 @@ export class Hud {
     this.prestigeBtn = btn('prestige hide', `${ICONS.lighthouse}<span class="label">Phare</span><kbd>P</kbd>`, 'Faire descendre l’île (prestige)');
     this.workshopBtn = btn('', `${ICONS.hammer}<span class="label">Atelier</span><kbd>B</kbd><span class="badge"></span>`, 'Atelier : machines et améliorations');
     this.muteBtn = btn('icon-only', ICONS.sound, 'Son (M)');
-    this.menuBtn = btn('icon-only', `${ICONS.menu}`, 'Menu (Échap)');
+    this.menuBtn = btn('icon-only', `${ICONS.menu}`, 'Carnet de bord (Échap)');
     this.actions.append(this.prestigeBtn, this.workshopBtn, this.muteBtn, this.menuBtn);
 
     const pad = el('div', 'touch-pad');

@@ -204,12 +204,28 @@ export class Audio {
     this.tone(140, { type: 'square', decay: 0.14, gain: 0.04, when: 0.08, glide: 0.8 });
   }
 
+  /** Interface sounds: paper unfolding + brass click, page turn, wooden tick. */
+  ui(kind: 'open' | 'close' | 'tab' | 'hover' | 'click'): void {
+    if (kind === 'hover') return this.hover();
+    if (kind === 'click') return this.click();
+    if (kind === 'open') {
+      this.noise({ freq: 1800, q: 0.7, decay: 0.22, gain: 0.07, type: 'bandpass', sweep: 0.5 });
+      this.tone(420, { type: 'triangle', decay: 0.05, gain: 0.06, when: 0.13 });
+      this.tone(1260, { type: 'sine', decay: 0.12, gain: 0.03, when: 0.14, reverb: 0.4 });
+    } else if (kind === 'close') {
+      this.noise({ freq: 1200, q: 0.7, decay: 0.12, gain: 0.05, type: 'bandpass', sweep: 1.8 });
+      this.tone(330, { type: 'triangle', decay: 0.05, gain: 0.05, when: 0.06 });
+    } else {
+      this.noise({ freq: 2600, q: 0.6, decay: 0.14, gain: 0.05, type: 'highpass', sweep: 0.6 });
+    }
+  }
+
   click(): void {
     this.tone(1400, { type: 'sine', decay: 0.04, gain: 0.04 });
   }
 
   hover(): void {
-    this.tone(2200, { type: 'sine', decay: 0.02, gain: 0.015 });
+    this.tone(1700, { type: 'triangle', decay: 0.025, gain: 0.018 });
   }
 
   step(): void {

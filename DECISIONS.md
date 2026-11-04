@@ -161,3 +161,43 @@ Palette restreinte (`src/config/palette.ts`) : ciel lavande → pêche, herbes v
 
 - Les étincelles, le tremblement et le son d'impact (couches graves et harmoniques ajoutées) grandissent avec le palier.
 - **Changement de palier** : l'explorateur brandit la nouvelle pioche à deux mains au-dessus de sa tête (pose « objet obtenu »), avec gerbe de lumière, fanfare montante et annonce à l'écran.
+
+## 3. Direction artistique de l'interface : « le Carnet du Cartographe »
+
+**Idée.** L'explorateur tient le carnet d'un cartographe des îles flottantes. Le joueur ne lit pas un tableau de bord d'application : il ouvre un **carnet de vélin relié de laiton**, annoté à l'encre, où les éclats d'éther sont notés à l'encre cyan, le Lumen à la feuille d'or et les graines d'étoile à l'encre violette. Ce matériau colle au monde (machines crème, cuivre et laiton, coucher de soleil chaud) et tourne le dos au style « IA générique » : pas de verre sombre flouté, pas de dégradés décoratifs, pas de grilles de cartes identiques.
+
+**Matériaux.**
+- *Vélin* : papier crème **opaque** (`#f3e6cc`), grain très léger (bruit SVG en ligne). La lisibilité sur la scène 3D ne dépend plus du flou.
+- *Laiton* : cadres, rivets, médaillons, boutons. Rendu par aplats et arêtes nettes (reflet clair en haut, ombre franche en bas), pas par dégradés. Le cadre des panneaux est un neuf-quartiers SVG (`border-image`) avec rivets et équerres d'angle.
+- *Encre* : texte prune foncé (`#2a2035`), filets gravés (ligne + losange central) comme séparateurs.
+- Ombres « physiques » : décalage net sous les objets en laiton, une seule ombre douce pour détacher le panneau du décor.
+
+**Typographie** (incluse dans le build via fontsource, licence OFL) :
+- *Fraunces* (variable, axes SOFT et WONK) pour les titres, les noms et **les nombres importants** : un sérif doux et un peu bancal, qui a du caractère et rappelle les cartes anciennes.
+- *Alegreya Sans* pour le texte courant : humaniste, très lisible en petite taille, chiffres tabulaires pour les compteurs.
+
+**Palette UI.**
+
+| Rôle | Valeur |
+|---|---|
+| Vélin | `#f3e6cc` / rangées `#ead8b6` / clair `#fbf3e2` |
+| Encre | `#2a2035` / `#5d4e66` / `#8c7c86` |
+| Laiton | `#c38a3c` / reflet `#ebbd6a` / ombre `#7d5321` |
+| Encre d'éther (éclats) | `#138aa6` (lisible sur papier) |
+| Feuille d'or (Lumen) | `#a86b0c` |
+| Encre violette (graines) | `#6f45b8` |
+| Bon | `#3f7f43` |
+| Mauvais | `#a8433a` |
+
+**Icônes.** Toutes dessinées en SVG pour le jeu, dans un style *gravure* : contour à l'encre de 1,6 px + aplats de la palette. Aucun emoji.
+
+**Hiérarchie.** Dans chaque panneau, une ligne = une décision.
+- L'œil voit d'abord **le nom** et **ce que ça rapporte** (gros, en couleur de la ressource), puis **le prix**, porté par le bouton de laiton.
+- Le reste (part du total, palier, délai) est en petit, à l'encre pâle.
+- Les rangées sont des **lignes de registre** séparées par des filets, pas des cartes.
+
+**Mouvement et son.**
+- Les panneaux se *déplient* : rotation en X + échelle depuis le haut, avec léger dépassement. Les lignes apparaissent en cascade (40 ms d'écart).
+- À la fermeture, le panneau se replie vite (180 ms).
+- Sons synthétisés : papier qui se déplie avec un déclic de laiton, page qui tourne pour les onglets, petit tic de bois au survol, pièces au paiement.
+- Le bouton d'achat est un *sceau de laiton* : il se soulève au survol avec un reflet qui balaie la surface, s'enfonce à la pression, puis tamponne la ligne (« ✓ » à l'encre) quand l'achat réussit. S'il est trop cher, il devient une simple gravure en creux avec une jauge qui se remplit.

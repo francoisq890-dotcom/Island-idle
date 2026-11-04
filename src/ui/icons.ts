@@ -1,24 +1,43 @@
-/** Inline SVG icons (drawn for this game). */
+/**
+ * Icons drawn for the game in an "engraving" style: 1.6 px ink outline + flat
+ * fills from the palette. 24×24 viewBox. No emoji anywhere.
+ */
+const INK = '#2a2035';
+const s = (body: string, cls = 'ico') =>
+  `<svg viewBox="0 0 24 24" class="${cls}" fill="none" stroke="${INK}" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">${body}</svg>`;
+
 export const ICONS = {
-  shard: `<svg viewBox="0 0 24 24" class="ico"><path d="M12 1.5 18.5 9 12 22.5 5.5 9z" fill="#52f0ff"/><path d="M12 1.5 18.5 9H12z" fill="#b6fbff"/><path d="M5.5 9H12v13.5z" fill="#2fb7d8"/><path d="M12 9h6.5L12 22.5z" fill="#3fd3ee"/></svg>`,
-  lumen: `<svg viewBox="0 0 24 24" class="ico"><circle cx="12" cy="12" r="6.2" fill="#ffbe3b"/><circle cx="10.4" cy="10.2" r="2.3" fill="#fff0b8"/><g stroke="#ffd36e" stroke-width="2" stroke-linecap="round"><path d="M12 1.8v2.4M12 19.8v2.4M1.8 12h2.4M19.8 12h2.4M4.8 4.8l1.7 1.7M17.5 17.5l1.7 1.7M4.8 19.2l1.7-1.7M17.5 6.5l1.7-1.7"/></g></svg>`,
-  seed: `<svg viewBox="0 0 24 24" class="ico"><path d="M12 2l2.6 6.4 6.9.5-5.3 4.4 1.7 6.7L12 16.3 6.1 20l1.7-6.7L2.5 8.9l6.9-.5z" fill="#c59bff"/><path d="M12 2l2.6 6.4L12 16.3z" fill="#e3ccff"/></svg>`,
-  hammer: `<svg viewBox="0 0 24 24" class="ico"><path d="M3 20.5l9.5-9.5 1.9 1.9L5 22.4z" fill="#f3e7d4"/><path d="M11 4.5l4-2 7 7-2 4-2.2-2.2-2.6 2.6-4.4-4.4 2.6-2.6z" fill="#d2774c"/></svg>`,
-  menu: `<svg viewBox="0 0 24 24" class="ico"><g fill="#f3e7d4"><rect x="3" y="5" width="18" height="2.6" rx="1.3"/><rect x="3" y="10.7" width="18" height="2.6" rx="1.3"/><rect x="3" y="16.4" width="18" height="2.6" rx="1.3"/></g></svg>`,
-  lighthouse: `<svg viewBox="0 0 24 24" class="ico"><path d="M9 9h6l1.5 13h-9z" fill="#f1ebf7"/><path d="M8.6 13h6.8l.4 3H8.2z" fill="#b7a2e8"/><rect x="8.5" y="6" width="7" height="3" fill="#d2774c"/><path d="M12 1l4 5H8z" fill="#b7a2e8"/><circle cx="12" cy="7.5" r="1.3" fill="#fff"/></svg>`,
-  pick: `<svg viewBox="0 0 24 24" class="ico"><path d="M4 21l9-9" stroke="#a8724b" stroke-width="2.6" stroke-linecap="round"/><path d="M6 6c4-4 10-3 14 1-4-1.5-8-1.5-11 2z" fill="#8f8ca8"/><path d="M13 9l2 2" stroke="#d2774c" stroke-width="2.6"/></svg>`,
-  drill: `<svg viewBox="0 0 24 24" class="ico"><path d="M5 22l3-12h8l3 12" stroke="#d2774c" stroke-width="1.8" fill="none"/><rect x="7" y="3" width="10" height="7" rx="1.5" fill="#f3e7d4"/><path d="M10 10h4l-2 9z" fill="#8f8ca8"/><circle cx="12" cy="6.5" r="1.5" fill="#52f0ff"/></svg>`,
-  excavator: `<svg viewBox="0 0 24 24" class="ico"><rect x="3" y="15" width="18" height="5" rx="2.5" fill="#3b3552"/><rect x="5" y="8" width="11" height="7" rx="1" fill="#f3e7d4"/><rect x="7" y="9.5" width="5" height="3" fill="#ffbe3b"/><circle cx="19" cy="11" r="3" fill="#8f8ca8"/></svg>`,
-  refinery: `<svg viewBox="0 0 24 24" class="ico"><rect x="5" y="9" width="11" height="12" rx="2" fill="#f3e7d4"/><rect x="14" y="3" width="3" height="8" fill="#3b3552"/><rect x="7.5" y="13" width="6" height="4" rx="1" fill="#ffbe3b"/><path d="M5 9a5.5 4 0 0 1 11 0z" fill="#d2774c"/></svg>`,
-  geyser: `<svg viewBox="0 0 24 24" class="ico"><path d="M9 20c-1-5 1-9 0-14 2 3 4 3 6 0-1 5 1 9 0 14z" fill="#b6fbff"/><ellipse cx="12" cy="20.5" rx="8" ry="2.2" fill="#9e6d50"/><ellipse cx="12" cy="20" rx="5" ry="1.2" fill="#52f0ff"/></svg>`,
-  prism: `<svg viewBox="0 0 24 24" class="ico"><path d="M12 1.5l5 8-5 9-5-9z" fill="#fff2c4"/><path d="M12 5.5l2.2 4-2.2 4-2.2-4z" fill="#52f0ff"/><rect x="8" y="19" width="8" height="3.5" rx="1" fill="#efe7f7"/></svg>`,
-  belt: `<svg viewBox="0 0 24 24" class="ico"><rect x="2" y="12" width="20" height="6" rx="3" fill="#3b3552"/><circle cx="6" cy="15" r="1.6" fill="#d2774c"/><circle cx="12" cy="15" r="1.6" fill="#d2774c"/><circle cx="18" cy="15" r="1.6" fill="#d2774c"/><rect x="5" y="7" width="4" height="4" fill="#52f0ff"/><rect x="13" y="7" width="4" height="4" fill="#ffbe3b"/></svg>`,
-  star: `<svg viewBox="0 0 24 24" class="ico"><circle cx="12" cy="12" r="5" fill="#52f0ff"/><g stroke="#ffbe3b" stroke-width="1.6" fill="none"><ellipse cx="12" cy="12" rx="10" ry="4"/><ellipse cx="12" cy="12" rx="4" ry="10" transform="rotate(45 12 12)"/></g></svg>`,
-  bridge: `<svg viewBox="0 0 24 24" class="ico"><path d="M2 14q10-6 20 0" stroke="#76503a" stroke-width="2" fill="none"/><g fill="#a8724b"><rect x="3" y="14" width="3" height="5"/><rect x="8" y="12.4" width="3" height="5"/><rect x="13" y="12.4" width="3" height="5"/><rect x="18" y="14" width="3" height="5"/></g></svg>`,
-  sound: `<svg viewBox="0 0 24 24" class="ico"><path d="M4 9h4l5-4v14l-5-4H4z" fill="#f3e7d4"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" stroke="#f3e7d4" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>`,
-  mute: `<svg viewBox="0 0 24 24" class="ico"><path d="M4 9h4l5-4v14l-5-4H4z" fill="#f3e7d4"/><path d="M16 9l5 6M21 9l-5 6" stroke="#ff8fa3" stroke-width="2" stroke-linecap="round"/></svg>`,
-  hand: `<svg viewBox="0 0 24 24" class="ico"><path d="M12 2.5l6 7.5-6 12-6-12z" fill="#52f0ff"/></svg>`,
-  jump: `<svg viewBox="0 0 24 24" class="ico"><path d="M12 4l7 8h-4v7H9v-7H5z" fill="#f3e7d4"/></svg>`,
+  shard: s(`<path d="M12 1.8 18.6 9 12 22.2 5.4 9z" fill="#52f0ff"/><path d="M12 1.8V22.2M5.4 9h13.2" stroke-width="1.1"/><path d="M12 1.8 18.6 9H12z" fill="#c4fbff" stroke="none"/>`),
+  lumen: s(`<g stroke-width="1.4"><path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M4.6 19.4l2.1-2.1M17.3 6.7l2.1-2.1"/></g><circle cx="12" cy="12" r="5.6" fill="#ffbe3b"/><path d="M9.4 10.6a3 3 0 0 1 2.6-1.9" stroke="#fff3cc" stroke-width="1.4"/>`),
+  seed: s(`<path d="M12 2.2l2.7 6.1 6.6.6-5 4.4 1.5 6.5L12 16.4l-5.8 3.4 1.5-6.5-5-4.4 6.6-.6z" fill="#c59bff"/><path d="M12 2.2v14.2" stroke-width="1"/>`),
+  hammer: s(`<path d="M13.2 10.8 4 20a1.7 1.7 0 0 1-2.4-2.4l9.2-9.2" fill="#d9b48a"/><path d="M10.4 5.4l3.4-3 7.8 7.8-3 3.4-2.4-2.4-2.6 2.6-3.2-3.2 2.6-2.6z" fill="#c38a3c"/><path d="M14.6 6.2l3.2 3.2" stroke-width="1.1"/>`),
+  menu: s(`<path d="M5 5.5h14v13H5z" fill="#f3e6cc"/><path d="M8 9h8M8 12h8M8 15h5"/><path d="M5 5.5 3.5 4v15.5L5 18.5" fill="#c38a3c"/>`),
+  close: s(`<path d="M6 6l12 12M18 6 6 18" stroke-width="2.2"/>`),
+  sound: s(`<path d="M4 9.5h3.6L12.5 5v14l-4.9-4.5H4z" fill="#f3e6cc"/><path d="M15.6 9a4.5 4.5 0 0 1 0 6M18.2 6.6a8 8 0 0 1 0 10.8"/>`),
+  mute: s(`<path d="M4 9.5h3.6L12.5 5v14l-4.9-4.5H4z" fill="#f3e6cc"/><path d="M15.5 9.5l5 5M20.5 9.5l-5 5" stroke="#a8433a" stroke-width="2"/>`),
+  lighthouse: s(`<path d="M9 9.5h6l1.7 12.5H7.3z" fill="#f4eefb"/><path d="M8.5 14h7M8.1 17.5h7.8" stroke-width="1.1"/><path d="M8.5 6.5h7v3h-7z" fill="#c38a3c"/><path d="M12 1.6 16.2 6.5H7.8z" fill="#b7a2e8"/><path d="M5 8 2 7M19 8l3-1" stroke="#c59bff"/>`),
+  pick: s(`<path d="M5 20.5 14.5 11" stroke-width="2.4" stroke="#76503a"/><path d="M5 20.5 14.5 11"/><path d="M5.5 7C9 3.3 15.5 3 20 6.5c-4-.6-7.6.6-10.4 3.6z" fill="#b9bccb"/><path d="M12.6 8.8l2.6 2.6" stroke-width="2"/>`),
+  drill: s(`<path d="M6 21.5 9 10.5M18 21.5 15 10.5M12 10.5v11" stroke="#c38a3c"/><path d="M6.5 4h11v6.5h-11z" fill="#f3e6cc"/><path d="M5.5 4 12 1.2 18.5 4z" fill="#3b3552"/><path d="M10 10.5h4l-2 7z" fill="#b9bccb"/><circle cx="12" cy="7.2" r="1.6" fill="#52f0ff"/>`),
+  excavator: s(`<path d="M2.5 16.5h15a2.5 2.5 0 0 1 0 5h-15a2.5 2.5 0 0 1 0-5z" fill="#3b3552"/><path d="M4.5 9h9.5v7.5H4.5z" fill="#f3e6cc"/><path d="M6.5 10.8h4.5v3H6.5z" fill="#ffbe3b"/><circle cx="19.2" cy="11.5" r="3.3" fill="#b9bccb"/><path d="M19.2 8.2v6.6M15.9 11.5h6.6" stroke-width="1"/>`),
+  refinery: s(`<path d="M4.5 10h11v11.5h-11z" fill="#f3e6cc"/><path d="M4.5 10a5.5 4 0 0 1 11 0z" fill="#c38a3c"/><path d="M14.5 2.5h3v8h-3z" fill="#3b3552"/><path d="M7.5 14h5v4h-5z" fill="#ffbe3b"/><path d="M19.5 4c1 1 1 2.2 0 3.2" stroke="#8c7c86"/>`),
+  geyser: s(`<path d="M9.6 19C8.6 14 10.6 10 9.6 4.5c1.6 2 3.2 2 4.8 0-1 5.5 1 9.5 0 14.5z" fill="#c4fbff"/><path d="M2.5 20.5c2-2.4 17-2.4 19 0-2 1.8-17 1.8-19 0z" fill="#9e6d50"/><path d="M7 20.2c2-.9 8-.9 10 0" stroke="#52f0ff" stroke-width="2"/>`),
+  prism: s(`<path d="M12 1.5l5.2 8.2L12 18.5 6.8 9.7z" fill="#fff2c4"/><path d="M12 5.5l2.4 4.2L12 14l-2.4-4.3z" fill="#52f0ff"/><path d="M7 19.5h10v3H7z" fill="#efe7f7"/>`),
+  belt: s(`<path d="M3.5 13h17a3 3 0 0 1 0 6h-17a3 3 0 0 1 0-6z" fill="#3b3552"/><circle cx="6.5" cy="16" r="1.4" fill="#c38a3c"/><circle cx="12" cy="16" r="1.4" fill="#c38a3c"/><circle cx="17.5" cy="16" r="1.4" fill="#c38a3c"/><path d="M5 6.5h4.5V11H5z" fill="#52f0ff"/><path d="M13.5 6.5H18V11h-4.5z" fill="#ffbe3b"/>`),
+  star: s(`<circle cx="12" cy="12" r="4.4" fill="#52f0ff"/><ellipse cx="12" cy="12" rx="10" ry="3.6" stroke="#c38a3c"/><ellipse cx="12" cy="12" rx="3.6" ry="10" transform="rotate(45 12 12)" stroke="#c38a3c"/>`),
+  bridge: s(`<path d="M2 12.5q10-6.5 20 0" stroke="#76503a"/><path d="M3 13.5h3.2v6H3zM8.3 11.6h3.2v6H8.3zM13.4 11.6h3.2v6h-3.2zM18.6 13.5h3.2v6h-3.2z" fill="#a8724b"/>`),
+  hand: s(`<path d="M12 2.5l6.2 7.5L12 21.5 5.8 10z" fill="#52f0ff"/><path d="M5.8 10h12.4" stroke-width="1.1"/>`),
+  jump: s(`<path d="M12 3.5l7 7.5h-4v8h-6v-8H5z" fill="#f3e6cc"/>`),
+  rune: s(`<path d="M12 1.8 20.5 7v10L12 22.2 3.5 17V7z" fill="#e7dcf7"/><path d="M12 6v12M8.5 9.5 12 12l3.5-2.5M9 15.5h6" stroke="#6f45b8" stroke-width="1.8"/>`),
+  altar: s(`<path d="M4 21.5h16v-3H4z" fill="#c38a3c"/><path d="M6 18.5V11h12v7.5" fill="#efe7f7"/><path d="M12 2l3.5 4.5L12 11 8.5 6.5z" fill="#c59bff"/><path d="M9.5 14.5h5" stroke-width="1.2"/>`),
+  book: s(`<path d="M3.5 4.5c3-1 6-1 8.5 1v15c-2.5-2-5.5-2-8.5-1z" fill="#f3e6cc"/><path d="M20.5 4.5c-3-1-6-1-8.5 1v15c2.5-2 5.5-2 8.5-1z" fill="#ead8b6"/><path d="M6 8.5c1.5-.3 3-.2 4 .3M6 11.5c1.5-.3 3-.2 4 .3" stroke-width="1.1"/>`),
+  trophy: s(`<path d="M7 3h10v5a5 5 0 0 1-10 0z" fill="#ebbd6a"/><path d="M7 5H3.8a3.5 3.5 0 0 0 3.6 4.3M17 5h3.2a3.5 3.5 0 0 1-3.6 4.3"/><path d="M10.5 13h3v4h-3z" fill="#c38a3c"/><path d="M7.5 17h9v4h-9z" fill="#7d5321"/>`),
+  meteor: s(`<path d="M3 3l9 9M7 2.5l7 7M2.5 7l7 7" stroke="#ebbd6a" stroke-width="1.4"/><circle cx="15.5" cy="15.5" r="5.5" fill="#52f0ff"/><path d="M13 14.5l2 2 3-3" stroke-width="1.2"/>`),
+  lock: s(`<path d="M6 11h12v10H6z" fill="#c38a3c"/><path d="M8.5 11V8a3.5 3.5 0 0 1 7 0v3"/><path d="M12 14.5v3" stroke-width="2"/>`),
+  check: s(`<path d="M5 12.5l4.5 4.5L19 7.5" stroke-width="2.6"/>`),
+  clock: s(`<circle cx="12" cy="12" r="9" fill="#f3e6cc"/><path d="M12 7v5.5l3.5 2"/>`),
+  clover: s(`<path d="M12 11.5C9 4 3.5 8 8 12c-4.5 4 1 8 4-.5 3 8.5 8.5 4.5 4-.5 4.5-4-1-8-4 .5z" fill="#8fd18a"/><path d="M12 12l2.5 9.5" stroke="#3f7f43"/>`),
+  bolt: s(`<path d="M13.5 2 5 13.5h6L9.5 22 19 9.5h-6z" fill="#ebbd6a"/>`),
+  dice: s(`<path d="M4 6.5 12 2l8 4.5v11L12 22l-8-4.5z" fill="#efe7f7"/><path d="M4 6.5l8 4.5 8-4.5M12 11v11" stroke-width="1.2"/><circle cx="12" cy="6.5" r="1" fill="${INK}"/><circle cx="7.5" cy="13" r="1" fill="${INK}"/><circle cx="16.5" cy="13" r="1" fill="${INK}"/>`),
 };
 
 export type IconName = keyof typeof ICONS;

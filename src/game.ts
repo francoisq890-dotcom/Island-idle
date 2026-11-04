@@ -98,8 +98,7 @@ export class Game {
         importSave: (t) => this.importSave(t),
         reset: () => this.hardReset(),
         settingsChanged: () => this.applySettings(),
-        closed: () => this.audio.click(),
-        sound: (k) => (k === 'click' ? this.audio.click() : this.audio.hover()),
+        sound: (k) => this.audio.ui(k),
       },
       () => this.state,
       () => this.rates,
@@ -333,7 +332,7 @@ export class Game {
     });
   }
 
-  buyMachine(id: MachineId, n: number): void {
+  buyMachine(id: MachineId, n: number): boolean {
     let bought = 0;
     const before = this.state.machines[id];
     for (let i = 0; i < n; i++) {
@@ -346,7 +345,7 @@ export class Game {
       const missing = (cost.lumen ?? 0) > this.state.lumen ? 'Lumen' : 'éclats';
       const pos = this.world.sites[id].slotPosition(this.world.sites[id].nextGhostIndex >= 0 ? this.world.sites[id].nextGhostIndex : 0);
       this.hud.float(pos.x, pos.y + 2.5, pos.z, `Pas assez de ${missing}`, 'text small', 1.2);
-      return;
+      return false;
     }
     this.markDirty();
     const { spawned } = this.world.sync(this.state, this.rates, true);
@@ -368,12 +367,13 @@ export class Game {
     }
     this.checkObjectives();
     this.panels.refresh();
+    return true;
   }
 
-  buyUpgrade(id: string): void {
+  buyUpgrade(id: string): boolean {
     if (!buyUpgrade(this.state, id)) {
       this.audio.error();
-      return;
+      return false;
     }
     const up = getUpgrade(id)!;
     this.markDirty();
@@ -392,6 +392,7 @@ export class Game {
     this.world.particles.sparks(p.clone().setY(p.y + 1.2), { count: 30, color: PALETTE.lumen, speed: 5, life: 0.9, size: 0.08, up: 3 });
     this.checkObjectives();
     this.panels.refresh();
+    return true;
   }
 
   unlockZone(id: ZoneId): void {
@@ -677,7 +678,7 @@ export class Game {
       case 'crystal':
         return `<h3>${ICONS.shard} Cristal d’éther</h3>
           <p>Frappe-le avec ta pioche pour récolter des éclats.</p>
-          <div class="row"><span>Par coup</span><b>+${formatNumber(r.click, 1)} ${ICONS.shard}</b></div>
+          <div class="kv"><span>Par coup</span><b>+${formatNumber(r.click, 1)} ${ICONS.shard}</b></div>
           <div class="foot">${near ? `${this.keyCap()} ou clic : récolter` : 'Clic : récolter (de près)'}</div>`;
       case 'site': {
         const id = it.machine!;
@@ -689,21 +690,21 @@ export class Game {
         const prevMs = [...MILESTONES].reverse().find((m) => m <= n) ?? 0;
         const rows: string[] = [];
         if (id === 'refinery') {
-          rows.push(`<div class="row"><span>Production</span><b>+${formatRate(pm.lumen)} ${ICONS.lumen}/s</b></div>`);
-          rows.push(`<div class="row"><span>Consomme</span><b>${formatRate(pm.processed)} ${ICONS.shard}/s</b></div>`);
+          rows.push(`<div class="kv"><span>Production</span><b>+${formatRate(pm.lumen)} ${ICONS.lumen}/s</b></div>`);
+          rows.push(`<div class="kv"><span>Consomme</span><b>${formatRate(pm.processed)} ${ICONS.shard}/s</b></div>`);
           if (r.refineSupplyLimited) rows.push(`<div class="warn">Les raffineries manquent d’éclats : elles ne prennent jamais plus de 50 % de ta production. Construis des foreuses !</div>`);
         } else {
-          rows.push(`<div class="row"><span>Production totale</span><b>+${formatRate(pm.shards)} ${ICONS.shard}/s</b></div>`);
-          if (pm.lumen > 0) rows.push(`<div class="row"><span>Lumen</span><b>+${formatRate(pm.lumen)} ${ICONS.lumen}/s</b></div>`);
-          if (n > 0) rows.push(`<div class="row"><span>Part de ton île</span><b>${Math.round(pm.share * 100)} %</b></div>`);
+          rows.push(`<div class="kv"><span>Production totale</span><b>+${formatRate(pm.shards)} ${ICONS.shard}/s</b></div>`);
+          if (pm.lumen > 0) rows.push(`<div class="kv"><span>Lumen</span><b>+${formatRate(pm.lumen)} ${ICONS.lumen}/s</b></div>`);
+          if (n > 0) rows.push(`<div class="kv"><span>Part de ton île</span><b>${Math.round(pm.share * 100)} %</b></div>`);
         }
-        const msHtml = ms ? `<div class="row"><span>Palier ${ms} → production ×2</span><b>${n}/${ms}</b></div><div class="ms"><i style="width:${((n - prevMs) / (ms - prevMs)) * 100}%"></i></div>` : '';
+        const msHtml = ms ? `<div class="kv"><span>Palier ${ms} → production ×2</span><b>${n}/${ms}</b></div><div class="ms"><i style="width:${((n - prevMs) / (ms - prevMs)) * 100}%"></i></div>` : '';
         const t = timeToAfford(s, r, cost);
         return `<h3>${ICONS[MACHINE_ICON[id]]} ${def.name} <span class="count">${n > 0 ? '×' + n : ''}</span></h3>
           <p>${def.blurb}</p>
           ${rows.join('')}${msHtml}
           <div class="foot">${act('Construire')} <span class="cost" style="margin-left:auto">${costHtml(cost, have)}</span></div>
-          ${!canAfford(s, cost) && isFinite(t) ? `<div class="row" style="margin-top:4px"><span>Disponible</span><b>dans ${formatDuration(t)}</b></div>` : ''}`;
+          ${!canAfford(s, cost) && isFinite(t) ? `<div class="kv" style="margin-top:4px"><span>Disponible</span><b>dans ${formatDuration(t)}</b></div>` : ''}`;
       }
       case 'bridge': {
         const z = ZONES[it.zone!];
@@ -711,7 +712,7 @@ export class Game {
         return `<h3>${ICONS.bridge} ${z.bridgeName}</h3>
           <p>Mène à l’<b>${z.name}</b>. ${z.blurb}</p>
           <div class="foot">${act('Construire')} <span style="margin-left:auto">${costHtml(z.cost, have)}</span></div>
-          ${!canAfford(s, z.cost) && isFinite(t) ? `<div class="row" style="margin-top:4px"><span>Disponible</span><b>dans ${formatDuration(t)}</b></div>` : ''}`;
+          ${!canAfford(s, z.cost) && isFinite(t) ? `<div class="kv" style="margin-top:4px"><span>Disponible</span><b>dans ${formatDuration(t)}</b></div>` : ''}`;
       }
       case 'lighthouse': {
         const ready = canPrestige(s);
