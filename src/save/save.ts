@@ -6,17 +6,36 @@
  *  - Export format: "ILES1." + base64(utf-8 JSON), safe to paste anywhere.
  */
 import { MACHINE_ORDER, UPGRADES, ZONE_ORDER } from '../config/economy';
+import { FAMILY_ORDER, RUNES, type FamilyId } from '../config/runes';
 import { createInitialState, SAVE_VERSION, type GameState } from '../economy/state';
 
 export const STORAGE_KEY = 'iles-ether.save';
-const EXPORT_PREFIX = 'ILES1.';
+const EXPORT_PREFIX = 'ILES1.'; // format of the text wrapper, independent of SAVE_VERSION
 
 type Json = Record<string, unknown>;
 
 /** Migrations from version N to N+1. Add an entry whenever SAVE_VERSION is bumped. */
 const MIGRATIONS: Record<number, (raw: Json) => Json> = {
-  // Example for the future:
-  // 1: (raw) => ({ ...raw, version: 2, newField: 0 }),
+  /**
+   * v1 → v2 (iteration 2): runes, altar, achievements, counters.
+   * Older players get the pickaxe tiers from the upgrades they already own and
+   * a small welcome gift so the new altar is usable right away.
+   */
+  1: (raw) => ({
+    ...raw,
+    version: 2,
+    runes: {},
+    altar: { luck: 0, bulk: 0, speed: 0, auto: false },
+    runeAuto: null,
+    runeStats: { rolls: 0, runes: 0, best: -1 },
+    achievements: {},
+    counters: { crits: 0, meteors: 0, golden: 0, eventsSeen: 0 },
+    lifetimeSeeds: num((raw as Json).seeds, 0),
+    // A rune tutorial step was inserted at index 6: players already past it skip it
+    // (they get a one-time announcement instead).
+    objective: num((raw as Json).objective, 0) >= 6 ? num((raw as Json).objective, 0) + 1 : num((raw as Json).objective, 0),
+    flags: { ...obj((raw as Json).flags), migratedV2: true },
+  }),
 };
 
 export function serialize(state: GameState): string {
@@ -79,6 +98,26 @@ export function deserialize(text: string, now = Date.now()): GameState {
   s.settings.muted = set.muted === true;
   s.settings.invertY = set.invertY === true;
   if (set.quality === 'high' || set.quality === 'low' || set.quality === 'auto') s.settings.quality = set.quality;
+
+  // v2 fields.
+  const runes = obj(raw.runes);
+  for (const r of RUNES) {
+    const n = Math.floor(num(runes[r.id], 0));
+    if (n > 0) s.runes[r.id] = n;
+  }
+  const al = obj(raw.altar);
+  s.altar.luck = Math.floor(num(al.luck, 0));
+  s.altar.bulk = Math.floor(num(al.bulk, 0));
+  s.altar.speed = Math.floor(num(al.speed, 0));
+  s.altar.auto = al.auto === true;
+  s.runeAuto = FAMILY_ORDER.includes(raw.runeAuto as FamilyId) ? (raw.runeAuto as FamilyId) : null;
+  const rs = obj(raw.runeStats);
+  s.runeStats = { rolls: Math.floor(num(rs.rolls, 0)), runes: Math.floor(num(rs.runes, 0)), best: Math.floor(num(rs.best, -1, -1)) };
+  const ach = obj(raw.achievements);
+  for (const k of Object.keys(ach)) if (ach[k] === true) s.achievements[k] = true;
+  const ct = obj(raw.counters);
+  for (const k of Object.keys(s.counters) as (keyof GameState['counters'])[]) s.counters[k] = num(ct[k], 0);
+  s.lifetimeSeeds = num(raw.lifetimeSeeds, s.seeds);
 
   const p = obj(raw.player);
   s.player.x = typeof p.x === 'number' && isFinite(p.x) ? p.x : s.player.x;

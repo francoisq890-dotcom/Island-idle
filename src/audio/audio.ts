@@ -246,6 +246,37 @@ export class Audio {
     this.tone(this.midi(n), { type: 'sine', decay: 0.18, gain: 0.018, reverb: 0.5 });
   }
 
+  /** Critical strike: bright metallic clang + rising sparkle. */
+  crit(): void {
+    this.noise({ freq: 4200, q: 4, decay: 0.12, gain: 0.12 });
+    [0, 7, 12, 19].forEach((n, i) => this.tone(this.midi(84 + n), { type: 'triangle', decay: 0.3, gain: 0.06, when: i * 0.035, reverb: 0.7 }));
+    this.tone(70, { type: 'sine', decay: 0.3, gain: 0.25, glide: 0.5 });
+  }
+
+  /** Rune roll: stone grind + chime whose brightness rises with rarity. */
+  runeRoll(best: number, distant = false): void {
+    const g = distant ? 0.35 : 1;
+    this.noise({ freq: 500, q: 0.8, decay: 0.18, gain: 0.08 * g, type: 'lowpass', sweep: 3 });
+    const scale = [0, 2, 4, 7, 9, 12, 16];
+    const root = 67 + scale[best] ;
+    this.tone(this.midi(root), { type: 'sine', decay: 0.5 + best * 0.15, gain: 0.07 * g, reverb: 0.8 });
+    this.tone(this.midi(root + 7), { type: 'sine', decay: 0.4, gain: 0.04 * g, when: 0.05, reverb: 0.8 });
+    if (best >= 2) this.tone(this.midi(root + 12), { type: 'triangle', decay: 0.6, gain: 0.05 * g, when: 0.1, reverb: 1 });
+  }
+
+  /** Big rune drop: choir-like chord swell + bells. */
+  runeFanfare(best: number): void {
+    const chord = best >= 5 ? [0, 4, 7, 11, 14, 19, 23] : [0, 4, 7, 12, 16];
+    chord.forEach((n, i) => this.tone(this.midi(55 + n), { type: 'sine', attack: 0.25, decay: 2.6, gain: 0.05, when: 0.05 + i * 0.04, reverb: 1 }));
+    [24, 28, 31, 36].forEach((n, i) => this.tone(this.midi(55 + n), { type: 'triangle', decay: 1.2, gain: 0.05, when: 0.3 + i * 0.12, reverb: 1 }));
+    this.tone(48, { type: 'sine', decay: 1.5, gain: 0.3, glide: 0.5 });
+    this.noise({ freq: 3000, q: 0.5, decay: 1.6, gain: 0.05, type: 'highpass', when: 0.2 });
+  }
+
+  achievement(): void {
+    [0, 4, 7, 12].forEach((n, i) => this.tone(this.midi(79 + n), { type: 'triangle', decay: 0.5, gain: 0.06, when: i * 0.06, reverb: 0.9 }));
+  }
+
   objective(): void {
     [0, 7, 12, 16, 19].forEach((n, i) => this.tone(this.midi(72 + n), { type: 'triangle', decay: 0.6, gain: 0.07, when: i * 0.08, reverb: 0.9 }));
   }

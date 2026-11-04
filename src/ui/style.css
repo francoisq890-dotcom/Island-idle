@@ -504,3 +504,79 @@ body:not(.touch) .touch-only { display: none !important; }
   .objective { top: 10px; bottom: auto; left: 50%; right: auto; transform: translateX(-50%); width: min(380px, 50vw); text-align: center; }
   .objective .hint { display: none; }
 }
+
+/* ==========================================================================
+   Rune altar
+   ========================================================================== */
+.panel.runes { --fam: #9e6d50; }
+.altar-top { display: grid; grid-template-columns: 210px 1fr; gap: 16px; margin-top: 10px; }
+.altar-roll { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 8px 6px 4px; border-right: 1px dashed rgba(125,83,33,.5); }
+.slab-art { width: 108px; height: 108px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: radial-gradient(circle, rgba(255,255,255,.7) 0 40%, transparent 70%); animation: slabFloat 3s ease-in-out infinite; }
+@keyframes slabFloat { 50% { transform: translateY(-6px) rotate(4deg); } }
+.seal.big { min-width: 180px; padding: 10px 16px 11px; }
+.seal.big .lbl { font-size: 14px; }
+.seal.big .price { font-size: 24px; }
+.roll-hint { text-align: center; margin: 0; }
+.auto-toggle { display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 700; color: var(--violet); cursor: pointer; }
+.auto-toggle input { width: 18px; height: 18px; accent-color: var(--violet); }
+.altar-right { min-width: 0; }
+.tray { display: flex; flex-wrap: wrap; gap: 6px; min-height: 92px; padding: 8px; border-radius: 6px; background: rgba(234,216,182,.6); box-shadow: inset 0 1px 4px rgba(60,30,10,.25); align-content: flex-start; }
+.tray .empty { width: 100%; padding: 22px 6px; }
+.tray.flash { animation: trayFlash 0.6s; }
+@keyframes trayFlash { 0% { box-shadow: inset 0 0 0 3px var(--best), 0 0 18px var(--best); } }
+.chip { display: flex; align-items: center; gap: 6px; padding: 3px 10px 3px 3px; border-radius: 22px; background: var(--vellum-hi); border: 2px solid #8c8178; font-size: 14.5px; font-weight: 700; animation: chipIn 0.4s cubic-bezier(.2,1.6,.4,1) backwards; }
+.chip b { color: var(--brass-lo); }
+.chip.r1 { border-color: #3f8a43; } .chip.r2 { border-color: #2a6fbd; } .chip.r3 { border-color: #7a3fc7; background: #f1e6ff; }
+.chip.r4 { border-color: #c08510; background: #fff1c9; box-shadow: 0 0 12px rgba(240,176,32,.6); }
+.chip.r5 { border-color: #c42e4a; background: #ffe1e6; box-shadow: 0 0 14px rgba(240,74,100,.6); }
+.chip.r6 { border-color: #16a3b8; background: #dcfbff; box-shadow: 0 0 16px rgba(127,246,255,.9); }
+@keyframes chipIn { from { opacity: 0; transform: scale(0.4) translateY(10px); } }
+.luckline { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 15px; color: var(--ink-soft); }
+.luckline b { font-family: var(--display); color: var(--ink); font-size: 17px; }
+.luckline .ico { width: 18px; height: 18px; }
+table.odds { width: 100%; border-collapse: collapse; font-size: 15px; }
+table.odds td { padding: 4px 6px; border-bottom: 1px dashed rgba(125,83,33,.35); vertical-align: middle; }
+table.odds .rn { font-family: var(--display); font-weight: 650; white-space: nowrap; }
+table.odds .dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 7px; border: 1.5px solid rgba(42,32,53,.5); vertical-align: -1px; }
+table.odds .pr { font-family: var(--display); font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--ink); }
+table.odds .ic { width: 30px; }
+table.odds .nm { font-weight: 700; white-space: nowrap; }
+table.odds .nm i { color: var(--ink-faint); font-weight: 500; }
+table.odds .ef { color: var(--ink-soft); font-size: 14px; }
+.rune-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.rune-tile { display: flex; flex-direction: column; align-items: center; padding: 6px 2px; border-radius: 6px; background: rgba(234,216,182,.5); text-align: center; min-width: 0; }
+.rune-tile.got { background: var(--vellum-hi); box-shadow: 0 2px 0 var(--vellum-lo); }
+.rune-tile .rt-name { font-family: var(--display); font-size: 13.5px; font-weight: 650; line-height: 1.1; margin-top: 3px; }
+.rune-tile .rt-rar { font-size: 11.5px; font-weight: 800; font-variant: small-caps; letter-spacing: 0.06em; }
+.rune-tile .rt-n { font-family: var(--display); font-size: 14px; font-weight: 700; color: var(--brass-lo); min-height: 17px; }
+.bonus-sum { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 8px 10px; border-left: 3px solid var(--violet); background: rgba(231,220,247,.5); font-size: 15px; font-weight: 700; color: var(--violet); }
+.bonus-sum b { width: 100%; color: var(--ink); font-family: var(--display); }
+.bonus-sum .capped::after { content: ' (max)'; color: var(--ink-faint); font-weight: 500; }
+.rune-ico { flex: none; display: block; }
+.rune-ico.celestial path:first-child { animation: prism 2.4s linear infinite; }
+@keyframes prism { 0% { stroke: #52f0ff; } 33% { stroke: #ffbe3b; } 66% { stroke: #c59bff; } 100% { stroke: #52f0ff; } }
+
+/* Celebration overlay ---------------------------------------------------------- */
+.celebrate { position: fixed; inset: 0; z-index: 45; display: flex; align-items: center; justify-content: center; pointer-events: none; opacity: 0; transition: opacity 0.4s; }
+.celebrate.on { opacity: 1; }
+.celebrate .rays { position: absolute; width: 900px; height: 900px; color: var(--rar); will-change: transform; animation: rays 12s linear infinite; }
+.celebrate .rays svg { width: 100%; height: 100%; display: block; }
+@keyframes rays { to { transform: rotate(360deg); } }
+.celebrate .card { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 40px 18px; text-align: center; transform: scale(0.6); transition: transform 0.55s cubic-bezier(.2,1.6,.4,1); }
+.celebrate.on .card { transform: scale(1); }
+.celebrate .kicker { font-family: var(--text); font-weight: 800; font-size: 17px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--rar); }
+.celebrate .title { font-family: var(--display); font-size: 40px; font-weight: 800; line-height: 1; font-variation-settings: 'SOFT' 100, 'WONK' 1; }
+.celebrate .eff { font-size: 18px; font-weight: 700; color: var(--ink-soft); }
+.celebrate .odds { font-size: 14px; color: var(--ink-faint); }
+.celebrate .rune-ico { filter: drop-shadow(0 0 18px var(--rar)); animation: runeSpin 1.2s cubic-bezier(.2,1.4,.4,1); }
+@keyframes runeSpin { from { transform: rotateY(540deg) scale(0.3); } }
+.celebrate.r6 .card { box-shadow: 0 0 0 4px #7ff6ff, 0 0 60px rgba(127,246,255,.9), var(--lift); }
+
+@media (max-width: 760px) {
+  .altar-top { grid-template-columns: 1fr; }
+  .altar-roll { border-right: none; border-bottom: 1px dashed rgba(125,83,33,.5); padding-bottom: 10px; }
+  .slab-art { width: 80px; height: 80px; }
+  table.odds .ef { display: none; }
+  .rune-grid { grid-template-columns: repeat(4, 1fr); }
+  .celebrate .title { font-size: 30px; }
+}

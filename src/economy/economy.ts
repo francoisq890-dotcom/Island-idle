@@ -19,6 +19,11 @@ import {
   type ZoneId,
 } from '../config/economy';
 import { createInitialState, emptyMachines, type GameState } from './state';
+import { bonusTotals, type BonusTotals } from './bonuses';
+import { runesAfterPrestige } from './runes';
+
+/** A critical strike multiplies the pickaxe gain by this. */
+export const CRIT_MULT = 5;
 
 export interface MachineRate {
   shards: number;
@@ -45,6 +50,13 @@ export interface Rates {
   perMachine: Record<MachineId, MachineRate>;
   /** True when refineries could process more if there were more shards. */
   refineSupplyLimited: boolean;
+  /** Runes + achievements. */
+  bonus: BonusTotals;
+  critChance: number;
+  strikeSpeed: number;
+  offlineMult: number;
+  /** Multiplier on machine prices (≤ 1). */
+  costMult: number;
 }
 
 const UPGRADE_BY_ID = new Map(UPGRADES.map((u) => [u.id, u]));
@@ -69,7 +81,13 @@ export function machineCost(id: MachineId, owned: number): Cost {
 }
 
 export function nextMachineCost(state: GameState, id: MachineId): Cost {
-  return machineCost(id, state.machines[id]);
+  return machineCostFor(state, id, state.machines[id]);
+}
+
+/** Price of the machine number `owned`+1 for this state (rune cost reduction applied). */
+export function machineCostFor(state: GameState, id: MachineId, owned: number): Cost {
+  const k = 1 - bonusTotals(state).cost;
+  return scaleCost(machineCost(id, owned), k);
 }
 
 export function canAfford(state: GameState, cost: Cost): boolean {
@@ -135,7 +153,9 @@ export function computeRates(state: GameState): Rates {
     }
   }
 
-  const pMult = prestigeMult(state.seeds);
+  const bonus = bonusTotals(state);
+  const pMult = prestigeMult(state.seeds) * (1 + bonus.prod);
+  const lumenMult = 1 + bonus.lumen;
   const perMachine = {} as Record<MachineId, MachineRate>;
   let shardsGross = 0;
   let lumen = 0;
@@ -145,7 +165,7 @@ export function computeRates(state: GameState): Rates {
     const n = state.machines[id];
     const mult = machineMult[id] * milestoneMult(n) * globalMult * pMult;
     const s = n * (def.shardsPerSec ?? 0) * mult;
-    const l = n * (def.lumenPerSec ?? 0) * mult;
+    const l = n * (def.lumenPerSec ?? 0) * mult * lumenMult;
     perMachine[id] = { shards: s, lumen: l, processed: 0, capacity: 0, share: 0 };
     shardsGross += s;
     lumen += l;
@@ -156,7 +176,7 @@ export function computeRates(state: GameState): Rates {
   const capacity = nRef * (MACHINES.refinery.refineInput ?? 0) * refThroughput * milestoneMult(nRef) * globalMult * pMult;
   const available = shardsGross * REFINE.maxShareOfProduction;
   const processed = Math.min(capacity, available);
-  const refLumen = processed * REFINE.ratio * refYield;
+  const refLumen = processed * REFINE.ratio * refYield * lumenMult;
   perMachine.refinery.processed = processed;
   perMachine.refinery.capacity = capacity;
   perMachine.refinery.lumen += refLumen;
@@ -172,11 +192,16 @@ export function computeRates(state: GameState): Rates {
     refineProcessed: processed,
     shards: net,
     lumen,
-    click: HARVEST.baseValue * clickMult * pMult + clickPct * shardsGross,
+    click: (HARVEST.baseValue * clickMult * pMult + clickPct * shardsGross) * (1 + bonus.click),
     globalMult,
     prestigeMult: pMult,
     perMachine,
     refineSupplyLimited: nRef > 0 && capacity > available + 1e-9,
+    bonus,
+    critChance: bonus.crit,
+    strikeSpeed: 1 + bonus.speed,
+    offlineMult: 1 + bonus.offline,
+    costMult: 1 - bonus.cost,
   };
 }
 
@@ -203,13 +228,20 @@ export function tick(state: GameState, dt: number, rates = computeRates(state)):
   state.stats.playSeconds += dt;
 }
 
-/** One manual strike on a crystal. Returns the amount gained. */
-export function harvest(state: GameState, rates = computeRates(state)): number {
-  const v = rates.click;
+/** One manual strike on a crystal, with a chance of a critical hit. */
+export function harvestEx(state: GameState, rates = computeRates(state), rng: () => number = Math.random): { value: number; crit: boolean } {
+  const crit = rates.critChance > 0 && rng() < rates.critChance;
+  const v = rates.click * (crit ? CRIT_MULT : 1);
   addShards(state, v);
   state.stats.harvests += 1;
   state.stats.allTimeHarvests += 1;
-  return v;
+  if (crit) state.counters.crits += 1;
+  return { value: v, crit };
+}
+
+/** One manual strike (no critical hits: deterministic, used by tests / bot). */
+export function harvest(state: GameState, rates = computeRates(state)): number {
+  return harvestEx(state, rates, () => 1).value;
 }
 
 export function isMachineAvailable(state: GameState, id: MachineId): boolean {
@@ -270,7 +302,8 @@ export function unlockZone(state: GameState, id: ZoneId): boolean {
 // ---------------------------------------------------------------------------
 
 export function prestigeGain(state: GameState): number {
-  return seedsForRun(state.stats.runShards);
+  const base = seedsForRun(state.stats.runShards);
+  return base > 0 ? Math.floor(base * (1 + bonusTotals(state).seeds)) : 0;
 }
 
 export function canPrestige(state: GameState): boolean {
@@ -286,6 +319,11 @@ export function doPrestige(state: GameState): number {
   const gain = prestigeGain(state);
   const fresh = createInitialState();
   state.seeds += gain;
+  state.lifetimeSeeds += gain;
+  // Runes: epic and rarer survive, the rest crumble (see DECISIONS.md).
+  state.runes = runesAfterPrestige(state.runes);
+  // Altar upgrades reset, the automatic roll (quality of life) is kept.
+  state.altar = { luck: 0, bulk: 0, speed: 0, auto: state.altar.auto };
   state.shards = 0;
   state.lumen = 0;
   state.machines = emptyMachines();

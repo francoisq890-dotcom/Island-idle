@@ -12,6 +12,8 @@ import type { GameState } from '../economy/state';
 import { mulberry32 } from '../core/noise';
 import { Ease, type Tweens } from '../core/tween';
 import { Bridge } from './bridges';
+import { Altar } from './altars';
+import { FAMILIES, FAMILY_ORDER, type FamilyId } from '../config/runes';
 import { CameraRig } from './cameraRig';
 import { Conveyors } from './conveyors';
 import { createDecor, type DecorHandle } from './decor';
@@ -23,13 +25,14 @@ import { Player } from './player';
 import type { Renderer } from './renderer';
 import { buildIslandMesh, distToPolyline, Ground, islandTopHeight, type Trail } from './terrain';
 
-export type InteractKind = 'crystal' | 'site' | 'bridge' | 'lighthouse';
+export type InteractKind = 'crystal' | 'site' | 'bridge' | 'lighthouse' | 'altar';
 
 export interface Interactable {
   id: string;
   kind: InteractKind;
   machine?: MachineId;
   zone?: ZoneId;
+  family?: FamilyId;
   /** Anchor for tooltips. */
   anchor: THREE.Vector3;
   /** Proximity range (player). */
@@ -80,6 +83,8 @@ export class World {
   readonly lighthouse: Lighthouse;
   readonly beacon: Beacon;
   readonly conveyors: Conveyors;
+  readonly altars = new Map<FamilyId, Altar>();
+  private homeY = new Map<THREE.Object3D, number>();
   readonly interactables: Interactable[] = [];
   private islandMeshes = new Map<ZoneId, THREE.Mesh>();
   private decor: DecorHandle;
@@ -128,6 +133,15 @@ export class World {
     this.beacon = new Beacon(tweens);
     this.scene.add(this.beacon.group);
     this.scene.add(this.particles.group);
+
+    // Rune altars.
+    for (const f of FAMILY_ORDER) {
+      const [ax, az] = FAMILIES[f].altar;
+      const altar = new Altar(f, h(ax, az), this.particles);
+      this.altars.set(f, altar);
+      this.scene.add(altar.group);
+      this.ground.obstacles.push({ x: ax, z: az, r: 2.15, zone: FAMILIES[f].zone, active: () => true });
+    }
 
     // Obstacles.
     this.ground.obstacles.push({ x: NEXUS[0], z: NEXUS[1], r: 2.5, zone: 'home', active: () => true });
@@ -195,6 +209,10 @@ export class World {
       const anchor = new THREE.Vector3(b.sign[0], h(b.sign[0], b.sign[1]) + 2.6, b.sign[1]);
       this.interactables.push({ id: `bridge:${b.zone}`, kind: 'bridge', zone: b.zone, anchor, range: RANGES.bridge, sphere: new THREE.Sphere(anchor.clone().setY(anchor.y - 1), 1.6), active: false });
     }
+    for (const [f, altar] of this.altars) {
+      const c = altar.position.clone().add(new THREE.Vector3(0, 1.6, 0));
+      this.interactables.push({ id: `altar:${f}`, kind: 'altar', family: f, zone: FAMILIES[f].zone, anchor: altar.position.clone().add(new THREE.Vector3(0, 3.6, 0)), range: 3.6, sphere: new THREE.Sphere(c, 2.2), active: false });
+    }
     const lh = this.lighthouse.position.clone().add(new THREE.Vector3(0, 3, 0));
     this.interactables.push({ id: 'lighthouse', kind: 'lighthouse', zone: 'sky', anchor: lh.clone().setY(lh.y + 3), range: RANGES.lighthouse, sphere: new THREE.Sphere(lh, 3), active: false });
 
@@ -235,6 +253,7 @@ export class World {
     let d = Math.hypot(x - NEXUS[0], z - NEXUS[1]) - 3.2;
     d = Math.min(d, Math.hypot(x - MAIN_CRYSTAL[0], z - MAIN_CRYSTAL[1]) - 2.8);
     d = Math.min(d, Math.hypot(x - LIGHTHOUSE[0], z - LIGHTHOUSE[1]) - 3.4);
+    for (const f of FAMILY_ORDER) d = Math.min(d, Math.hypot(x - FAMILIES[f].altar[0], z - FAMILIES[f].altar[1]) - 3.4);
     for (const id of MACHINE_ORDER) {
       const s = SITES[id];
       for (const sl of s.slots) d = Math.min(d, Math.hypot(x - sl[0], z - sl[1]) - 1.7);
@@ -387,6 +406,7 @@ export class World {
       if (it.kind === 'site') it.active = state.zones[it.zone!];
       if (it.kind === 'bridge') it.active = this.bridges.get(it.zone!)!.available;
       if (it.kind === 'lighthouse') it.active = state.zones.sky;
+      if (it.kind === 'altar') it.active = state.zones[it.zone!];
     }
 
     // Conveyor flows (visual density from production rates).
@@ -476,11 +496,16 @@ export class World {
     }
     if (it.kind === 'crystal') return Math.hypot(p.x - this.crystal.position.x, p.z - this.crystal.position.z) - 1.2;
     if (it.kind === 'lighthouse') return Math.hypot(p.x - this.lighthouse.position.x, p.z - this.lighthouse.position.z) - 2.6;
+    if (it.kind === 'altar') {
+      const a = this.altars.get(it.family!)!.position;
+      return Math.hypot(p.x - a.x, p.z - a.z) - 2.2;
+    }
     return Math.hypot(p.x - it.anchor.x, p.z - it.anchor.z);
   }
 
   /** World position used by objective beacons. */
-  beaconTarget(kind: 'crystal' | 'site' | 'bridge' | 'lighthouse', key?: string): THREE.Vector3 {
+  beaconTarget(kind: 'crystal' | 'site' | 'bridge' | 'lighthouse' | 'altar', key?: string): THREE.Vector3 {
+    if (kind === 'altar') return this.altars.get(key as FamilyId)!.position.clone();
     if (kind === 'crystal') return this.crystal.position.clone();
     if (kind === 'site') {
       const site = this.sites[key as MachineId];
@@ -541,6 +566,10 @@ export class World {
     this.lighthouse.update(dt, t);
     this.beacon.update(t);
     for (const b of this.bridges.values()) b.update(t);
+    for (const [f, a] of this.altars) {
+      a.active = state.zones[FAMILIES[f].zone];
+      a.update(dt, t);
+    }
     for (const id of MACHINE_ORDER) {
       const site = this.sites[id];
       site.update(t, 1 + site.tier * 0.15);
@@ -578,8 +607,9 @@ export class World {
   /** Cinematic "island descends" animation used by prestige. */
   async descend(): Promise<void> {
     const objs = this.islandGroup();
-    const all: THREE.Object3D[] = [...objs, this.decor.group, this.zoneAmbience, this.nexus.group, this.crystal.group, this.lighthouse.group, this.conveyors.group, ...Object.values(this.sites).map((s) => s.group), ...[...this.bridges.values()].map((b) => b.group)];
+    const all: THREE.Object3D[] = [...objs, ...[...this.altars.values()].map((a) => a.group), this.decor.group, this.zoneAmbience, this.nexus.group, this.crystal.group, this.lighthouse.group, this.conveyors.group, ...Object.values(this.sites).map((s) => s.group), ...[...this.bridges.values()].map((b) => b.group)];
     const start = all.map((o) => o.position.y);
+    all.forEach((o, i) => this.homeY.set(o, start[i]));
     this.rig.shake(0.6);
     await new Promise<void>((resolve) =>
       this.tweens.add(
@@ -594,16 +624,12 @@ export class World {
   }
 
   async rise(): Promise<void> {
-    const all: THREE.Object3D[] = [...this.islandGroup(), this.decor.group, this.zoneAmbience, this.nexus.group, this.crystal.group, this.lighthouse.group, this.conveyors.group, ...Object.values(this.sites).map((s) => s.group), ...[...this.bridges.values()].map((b) => b.group)];
-    all.forEach((o) => (o.position.y = o === this.nexus.group ? this.nexus.position.y - 60 : o === this.crystal.group ? this.crystal.position.y - 60 : o === this.lighthouse.group ? this.lighthouse.position.y - 60 : -60));
-    const targets = all.map((o) => (o === this.nexus.group ? this.nexus.position.y : o === this.crystal.group ? this.crystal.position.y : o === this.lighthouse.group ? this.lighthouse.position.y : 0));
-    const start = all.map((o) => o.position.y);
+    // Everything that went down (plus bridges rebuilt in the meantime) comes back to its resting height.
+    const all: THREE.Object3D[] = [...this.islandGroup(), ...[...this.altars.values()].map((a) => a.group), this.decor.group, this.zoneAmbience, this.nexus.group, this.crystal.group, this.lighthouse.group, this.conveyors.group, ...Object.values(this.sites).map((s) => s.group), ...[...this.bridges.values()].map((b) => b.group)];
+    const targets = all.map((o) => this.homeY.get(o) ?? 0);
+    all.forEach((o, i) => (o.position.y = targets[i] - 60));
     await new Promise<void>((resolve) =>
-      this.tweens.add(
-        3,
-        (v) => all.forEach((o, i) => (o.position.y = start[i] + (targets[i] - start[i]) * v)),
-        { ease: Ease.outCubic, done: resolve },
-      ),
+      this.tweens.add(3, (v) => all.forEach((o, i) => (o.position.y = targets[i] - 60 * (1 - v))), { ease: Ease.outCubic, done: resolve }),
     );
   }
 

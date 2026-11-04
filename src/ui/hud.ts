@@ -200,7 +200,7 @@ export class Hud {
     this.floats.push({ el: e, wx, wy, wz, t: 0, life, dx: (Math.random() - 0.5) * 50, rise: 70 + Math.random() * 30 });
   }
 
-  toast(icon: IconName, title: string, sub = '', tone: '' | 'gold' | 'violet' = ''): void {
+  toast(icon: IconName, title: string, sub = '', tone: '' | 'gold' | 'violet' | 'ether' = ''): void {
     const t = el('div', `toast ${tone}`, `${ICONS[icon]}<div>${title}${sub ? `<small>${sub}</small>` : ''}</div>`);
     this.toasts.appendChild(t);
     window.setTimeout(() => t.remove(), 3800);

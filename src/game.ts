@@ -17,7 +17,7 @@ import {
   computeRates,
   doPrestige,
   getUpgrade,
-  harvest,
+  harvestEx,
   milestoneMult,
   nextMachineCost,
   nextMilestone,
@@ -34,7 +34,11 @@ import { createInitialState, type GameState } from './economy/state';
 import { clearStorage, exportSave, importSave, loadFromStorage, saveToStorage } from './save/save';
 import { costHtml, Hud } from './ui/hud';
 import { ICONS } from './ui/icons';
-import { Panels } from './ui/panels';
+import { MACHINE_ICON, Panels } from './ui/panels';
+import { Celebration, RunePanel, runeEffect, statText as statTextFn } from './ui/runes';
+import { FAMILIES, RARITIES, RARITY_INDEX, type FamilyId, type RuneDef } from './config/runes';
+import { buyAltarUpgrade, cooldownOf, doRoll } from './economy/runes';
+import { checkAchievements } from './economy/achievements';
 import { Renderer } from './world/renderer';
 import { World, type Interactable } from './world/world';
 
@@ -66,6 +70,12 @@ export class Game {
   private lastObjectiveId = '';
   private titleOrbit = 0;
   private stepToggle = false;
+  private runePanel!: RunePanel;
+  private celebration!: Celebration;
+  private rollTimer = 0;
+  private lastFamily: FamilyId = 'stone';
+  /** Global time scale (slow motion during big rune drops). */
+  private timeScale = 1;
   private incomeAcc = 0;
   private lumenAcc = 0;
   private incomeTimer = 0;
@@ -103,6 +113,23 @@ export class Game {
       () => this.state,
       () => this.rates,
     );
+
+    this.runePanel = new RunePanel(
+      {
+        roll: (f) => this.rollRunes(f, false),
+        buyAltar: (id) => this.buyAltar(id),
+        setAuto: (f) => {
+          this.state.runeAuto = f;
+          this.audio.ui('click');
+        },
+        nearAltar: (f) => this.nearAltar(f),
+        sound: (k) => this.audio.ui(k),
+      },
+      () => this.state,
+      () => this.rates,
+    );
+    this.panels.register(this.runePanel.el);
+    this.celebration = new Celebration(uiRoot);
 
     this.world.hooks = {
       onArrive: (k) => this.audio.arrive(k),
@@ -162,6 +189,10 @@ export class Game {
       done: () => {
         this.world.rig.cinematic = null;
         this.hud.show(true);
+        if (this.state.flags.migratedV2 && !this.state.flags.v2Seen) {
+          this.state.flags.v2Seen = true;
+          this.hud.toast('altar', 'Nouveau : les autels des runes', 'Un autel t’attend sur chaque île. Tire des runes pour des bonus permanents.', 'violet');
+        }
         if (this.offlineReport && shouldShowOfflineReport(this.offlineReport)) {
           this.panels.showOffline(this.offlineReport, () => this.audio.welcome());
           this.audio.welcome();
@@ -181,7 +212,8 @@ export class Game {
     cin.look.set(0, -2, -14);
   }
 
-  private frame(dt: number): void {
+  private frame(realDt: number): void {
+    const dt = realDt * this.timeScale;
     this.time += dt;
     this.tweens.update(dt);
     this.input.update();
@@ -203,6 +235,11 @@ export class Game {
 
     // Economy.
     tick(this.state, dt, this.rates);
+    this.rollTimer = Math.max(0, this.rollTimer - dt);
+    if (this.started && !this.busy && this.state.altar.auto && this.state.runeAuto && this.rollTimer <= 0) {
+      this.rollTimer = cooldownOf(this.state);
+      this.rollRunes(this.state.runeAuto, true);
+    }
     this.incomeAcc += this.rates.shards * dt;
     this.lumenAcc += this.rates.lumen * dt;
     this.incomeTimer += dt;
@@ -232,7 +269,7 @@ export class Game {
       this.save();
     }
 
-    this.renderer.render(dt);
+    this.renderer.render(realDt);
     this.input.endFrame();
   }
 
@@ -240,6 +277,7 @@ export class Game {
     this.dirty = true;
     this.rates = computeRates(this.state);
     this.dirty = false;
+    this.world.player.strikeSpeed = this.rates.strikeSpeed;
   }
 
   // ---------------------------------------------------------------------------
@@ -258,6 +296,7 @@ export class Game {
       this.panels.toggleWorkshop(this.currentObjective()?.id === 'pick1' ? 'upgrades' : undefined);
     }
     if (inp.pressed('KeyM')) this.toggleMute();
+    if (inp.pressed('KeyR')) this.openRunes(this.near?.kind === 'altar' ? this.near.family! : this.lastFamily);
     if (inp.pressed('KeyP') && this.state.zones.sky) this.panels.showPrestige();
 
     if (!inp.dragging) {
@@ -305,8 +344,11 @@ export class Game {
         this.unlockZone(it.zone!);
         break;
       case 'lighthouse':
-        this.audio.click();
         this.panels.showPrestige();
+        break;
+      case 'altar':
+        if (this.panels.open === this.runePanel.el && this.runePanel.family === it.family && fromKey) this.rollRunes(it.family!, false);
+        else this.openRunes(it.family!);
         break;
     }
   }
@@ -324,11 +366,16 @@ export class Game {
   private doHarvest(): void {
     this.state.flags.nearCrystal = true;
     this.world.player.requestStrike(this.world.crystal.position, () => {
-      const v = harvest(this.state, this.rates);
-      this.world.harvestFx(v);
+      const { value: v, crit } = harvestEx(this.state, this.rates);
+      this.world.harvestFx(crit ? v * 3 : v);
       this.audio.harvest(this.world.player.pickTierIndex);
       const hp = this.world.impactPoint();
-      this.hud.float(hp.x + (Math.random() - 0.5) * 0.6, hp.y + 0.7, hp.z + (Math.random() - 0.5) * 0.6, `+${formatNumber(v, 1)}${ICONS.shard}`, v >= 100 ? 'big' : '');
+      if (crit) {
+        this.audio.crit();
+        this.world.rig.shake(0.45);
+        this.world.particles.sparks(hp, { count: 40, color: PALETTE.lumen, speed: 9, life: 0.9, size: 0.1, up: 3 });
+        this.hud.float(hp.x, hp.y + 1.1, hp.z, `Critique ! +${formatNumber(v, 1)}${ICONS.shard}`, 'huge lumen', 1.4);
+      } else this.hud.float(hp.x + (Math.random() - 0.5) * 0.6, hp.y + 0.7, hp.z + (Math.random() - 0.5) * 0.6, `+${formatNumber(v, 1)}${ICONS.shard}`, v >= 100 ? 'big' : '');
     });
   }
 
@@ -420,6 +467,104 @@ export class Game {
       this.checkObjectives();
     });
     this.checkObjectives();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Runes
+  // ---------------------------------------------------------------------------
+
+  private nearAltar(f: FamilyId): boolean {
+    const it = this.world.interactables.find((i) => i.kind === 'altar' && i.family === f);
+    return !!it && this.world.distanceTo(it, this.world.player.position) < it.range + 1.2;
+  }
+
+  private openRunes(f: FamilyId): void {
+    if (!this.state.zones[FAMILIES[f].zone]) f = 'stone';
+    this.lastFamily = f;
+    this.runePanel.open(f);
+    this.panels.show(this.runePanel.el);
+  }
+
+  /** Roll at an altar (manual: must stand next to it; auto: anywhere). */
+  rollRunes(f: FamilyId, auto: boolean): RuneDef[] {
+    if (!auto && !this.nearAltar(f)) {
+      this.audio.error();
+      return [];
+    }
+    if (this.rollTimer > 0 && !auto) return [];
+    const got = doRoll(this.state, f);
+    if (!got.length) {
+      if (!auto) this.audio.error();
+      return [];
+    }
+    this.rollTimer = cooldownOf(this.state);
+    this.lastFamily = f;
+    this.markDirty();
+    const best = got.reduce((m, r) => Math.max(m, RARITY_INDEX[r.rarity]), 0);
+    const bestDef = got.find((r) => RARITY_INDEX[r.rarity] === best)!;
+    const altar = this.world.altars.get(f)!;
+    const seen = altar.position.distanceTo(this.world.player.position) < 40;
+    if (seen) altar.rollFx(best, got.length);
+    this.audio.runeRoll(best, auto && !seen);
+    if (this.panels.open === this.runePanel.el && this.runePanel.family === f) {
+      this.runePanel.refresh();
+      this.runePanel.showResults(got);
+    }
+    if (seen) {
+      const at = altar.slabWorld;
+      this.hud.float(at.x, at.y + 0.8, at.z, `${bestDef.name}${got.length > 1 ? ` +${got.length - 1}` : ''}`, best >= 3 ? 'big violet' : 'small violet', 1.3);
+    }
+    const r = RARITIES[best];
+    if (r.celebrate >= 3) {
+      this.celebration.show(bestDef, this.state.runes[bestDef.id]);
+      this.slowMo(r.celebrate >= 4 ? 2.4 : 1.4, r.celebrate >= 4 ? 0.2 : 0.35);
+      this.renderer.setFlashColor(r.color);
+      this.tweens.add(1.2, (v) => (this.renderer.flash = 0.45 * (1 - v)), { ease: Ease.outCubic });
+      this.world.rig.shake(r.celebrate >= 4 ? 0.9 : 0.6);
+      this.audio.runeFanfare(best);
+    } else if (r.celebrate === 2) {
+      this.hud.toast('rune', `Rune épique : ${bestDef.name}`, runeEffect(bestDef, 1) + ' par copie', 'violet');
+      this.world.rig.shake(0.3);
+    } else if (r.celebrate === 1 && (auto || this.panels.open !== this.runePanel.el)) {
+      this.hud.toast('rune', `Rune rare : ${bestDef.name}`, runeEffect(bestDef, 1) + ' par copie', 'ether');
+    }
+    this.afterProgress();
+    return got;
+  }
+
+  /** Brief slow motion, easing back to normal speed. */
+  private slowMo(seconds: number, scale: number): void {
+    this.timeScale = scale;
+    window.setTimeout(() => {
+      const start = performance.now();
+      const ease = () => {
+        const k = Math.min(1, (performance.now() - start) / 500);
+        this.timeScale = scale + (1 - scale) * k;
+        if (k < 1) requestAnimationFrame(ease);
+      };
+      ease();
+    }, seconds * 1000);
+  }
+
+  private buyAltar(id: 'luck' | 'bulk' | 'speed' | 'auto'): boolean {
+    if (!buyAltarUpgrade(this.state, id)) {
+      this.audio.error();
+      return false;
+    }
+    if (id === 'auto' && !this.state.runeAuto) this.state.runeAuto = this.runePanel.family;
+    this.audio.upgrade();
+    this.markDirty();
+    this.afterProgress();
+    return true;
+  }
+
+  /** Achievements & objectives after anything that changes progress. */
+  private afterProgress(): void {
+    for (const a of checkAchievements(this.state)) {
+      this.markDirty();
+      this.audio.achievement();
+      this.hud.toast('trophy', `Succès : ${a.name}`, `${a.desc} · ${runeEffectText(a.stat, a.value)} pour toujours`, 'gold');
+    }
   }
 
   private async cinematic(pos: THREE.Vector3, look: THREE.Vector3, hold: number): Promise<void> {
@@ -546,6 +691,8 @@ export class Game {
       this.uiTimer = 0;
       this.checkObjectives();
       this.panels.refresh();
+      if (this.panels.open === this.runePanel.el) this.runePanel.refresh();
+      this.afterProgress();
       const ready = canPrestige(s);
       this.world.lighthouse.setAwake(ready);
       this.hud.setPrestige(s.zones.sky, ready);
@@ -626,6 +773,10 @@ export class Game {
           h = 12;
         }
         break;
+      case 'altar':
+        pos = this.world.beaconTarget('altar', target.family);
+        h = 4.6;
+        break;
     }
     // Hide when the player is already there.
     if (pos && Math.hypot(pos.x - this.world.player.position.x, pos.z - this.world.player.position.z) < 3.2) pos = null;
@@ -640,6 +791,7 @@ export class Game {
 
   private actionLabel(it: Interactable): string {
     if (it.kind === 'crystal') return 'Récolter';
+    if (it.kind === 'altar') return 'Runes';
     if (it.kind === 'site' || it.kind === 'bridge') return 'Construire';
     return 'Phare';
   }
@@ -665,6 +817,10 @@ export class Game {
       }
       case 'lighthouse':
         return `${this.keyCap()} Parler au Phare`;
+      case 'altar': {
+        const f = FAMILIES[it.family!];
+        return `${this.keyCap()} ${f.altarName} <span class="cost">${costHtml(f.rollCost, have)} / tirage</span>`;
+      }
     }
   }
 
@@ -713,6 +869,13 @@ export class Game {
           <p>Mène à l’<b>${z.name}</b>. ${z.blurb}</p>
           <div class="foot">${act('Construire')} <span style="margin-left:auto">${costHtml(z.cost, have)}</span></div>
           ${!canAfford(s, z.cost) && isFinite(t) ? `<div class="kv" style="margin-top:4px"><span>Disponible</span><b>dans ${formatDuration(t)}</b></div>` : ''}`;
+      }
+      case 'altar': {
+        const f = FAMILIES[it.family!];
+        return `<h3>${ICONS.altar} ${f.altarName}</h3>
+          <p>${f.blurb} Paie l’autel pour tirer des runes : leurs bonus s’additionnent.</p>
+          <div class="kv"><span>Tirage</span><b>${costHtml(f.rollCost, have)}</b></div>
+          <div class="foot">${act('Ouvrir l’autel')}</div>`;
       }
       case 'lighthouse': {
         const ready = canPrestige(s);
@@ -814,17 +977,14 @@ export class Game {
   }
 }
 
-const MACHINE_ICON: Record<MachineId, 'drill' | 'excavator' | 'refinery' | 'geyser' | 'prism'> = {
-  drill: 'drill',
-  excavator: 'excavator',
-  refinery: 'refinery',
-  geyser: 'geyser',
-  prism: 'prism',
-};
 
 /** Visual pickaxe tier = number of pickaxe upgrades owned (0..6). */
 export function pickTierOf(s: GameState): number {
   return ['pick1', 'pick2', 'pick3', 'pick4', 'pick5', 'pick6'].filter((id) => s.upgrades[id]).length;
+}
+
+function runeEffectText(stat: import('./config/runes').RuneStat, v: number): string {
+  return statTextFn(stat, v);
 }
 
 function MODEL_H(h: number): number {

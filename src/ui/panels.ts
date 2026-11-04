@@ -68,12 +68,13 @@ function maxAffordable(state: GameState, id: MachineId): number {
 
 /** Brass seal button markup. */
 export function seal(cls = ''): string {
-  return `<button class="seal ${cls}"><span class="lbl"></span><span class="price"></span><small></small><i class="fill"></i></button>`;
+  return `<button class="seal ${cls}" data-base="${cls}"><span class="lbl"></span><span class="price"></span><small></small><i class="fill"></i></button>`;
 }
 
 /** Update a seal button in place. */
 export function setSeal(b: HTMLElement, o: { label: string; price: string; note?: string; ok: boolean; progress?: number; variant?: '' | 'go' | 'violet' }): void {
-  const cls = `seal${o.variant ? ' ' + o.variant : ''}${o.ok || o.variant === 'go' ? '' : ' no'}`;
+  const base = b.dataset.base ? ' ' + b.dataset.base : '';
+  const cls = `seal${base}${o.variant ? ' ' + o.variant : ''}${o.ok || o.variant === 'go' ? '' : ' no'}`;
   if (b.className !== cls) b.className = cls;
   const lbl = b.querySelector('.lbl')!;
   if (lbl.textContent !== o.label) lbl.textContent = o.label;

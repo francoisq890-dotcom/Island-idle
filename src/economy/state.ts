@@ -1,4 +1,5 @@
 import { MACHINE_ORDER, type MachineId, type ZoneId } from '../config/economy';
+import type { FamilyId } from '../config/runes';
 
 export interface GameStats {
   /** Shards earned since the island rose (reset on prestige). Drives prestige gain. */
@@ -40,9 +41,24 @@ export interface GameState {
   lastSeen: number;
   /** Island variant seed, changes at each prestige so the new island looks different. */
   islandSeed: number;
+
+  // --- Since save v2 -----------------------------------------------------------
+  /** Rune id → copies owned. */
+  runes: Record<string, number>;
+  /** Shared altar upgrades. */
+  altar: { luck: number; bulk: number; speed: number; auto: boolean };
+  /** Family rolled automatically (null = auto-roll off). */
+  runeAuto: FamilyId | null;
+  runeStats: { rolls: number; runes: number; best: number };
+  /** Achievement id → unlocked (permanent). */
+  achievements: Record<string, true>;
+  /** Counters for achievements / events (lifetime). */
+  counters: { crits: number; meteors: number; golden: number; eventsSeen: number };
+  /** Golden-island long-term goal: total seeds ever earned. */
+  lifetimeSeeds: number;
 }
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 export function emptyMachines(): Record<MachineId, number> {
   const m = {} as Record<MachineId, number>;
@@ -74,5 +90,12 @@ export function createInitialState(now = Date.now()): GameState {
     player: { x: 0, z: 9, yaw: 0 },
     lastSeen: now,
     islandSeed: 1,
+    runes: {},
+    altar: { luck: 0, bulk: 0, speed: 0, auto: false },
+    runeAuto: null,
+    runeStats: { rolls: 0, runes: 0, best: -1 },
+    achievements: {},
+    counters: { crits: 0, meteors: 0, golden: 0, eventsSeen: 0 },
+    lifetimeSeeds: 0,
   };
 }

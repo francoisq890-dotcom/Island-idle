@@ -14,6 +14,7 @@ export type ObjectiveTarget =
   | { kind: 'site'; machine: MachineId }
   | { kind: 'bridge'; zone: ZoneId }
   | { kind: 'lighthouse' }
+  | { kind: 'altar'; family: 'stone' | 'ember' | 'mist' | 'star' }
   | { kind: 'ui'; panel: 'workshop' }
   | { kind: 'none' };
 
@@ -85,6 +86,14 @@ export const OBJECTIVES: Objective[] = [
     target: { kind: 'site', machine: 'excavator' },
     progress: m('excavator', 1),
     reward: { shards: 40 },
+  },
+  {
+    id: 'rune1',
+    text: 'Tire une rune à l’Autel de Pierre',
+    hint: 'Les runes donnent des bonus permanents qui s’additionnent. Plus rares = plus puissantes.',
+    target: { kind: 'altar', family: 'stone' },
+    progress: (s) => [s.runeStats.rolls > 0 ? 1 : 0, 1],
+    reward: { shards: 60 },
   },
   {
     id: 'rate10',
