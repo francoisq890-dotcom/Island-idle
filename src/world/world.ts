@@ -312,9 +312,9 @@ export class World {
 
     // Crystal clusters scattered (instanced) for sparkle.
     const clusterGeo = build([
-      part(new THREE.OctahedronGeometry(0.3, 0), PALETTE.crystal, [0, 0.35, 0], { scale: [0.6, 1.7, 0.6], emit: 0.9 }),
-      part(new THREE.OctahedronGeometry(0.2, 0), 0x8ff7ff, [0.25, 0.2, 0.1], { scale: [0.6, 1.5, 0.6], rot: [0, 0, -0.5], emit: 0.9 }),
-      part(new THREE.OctahedronGeometry(0.18, 0), PALETTE.crystal, [-0.2, 0.18, -0.1], { scale: [0.6, 1.4, 0.6], rot: [0.4, 0, 0.5], emit: 0.9 }),
+      part(new THREE.OctahedronGeometry(0.3, 0), 0xffffff, [0, 0.35, 0], { scale: [0.6, 1.7, 0.6], emit: 0.9 }),
+      part(new THREE.OctahedronGeometry(0.2, 0), 0xe8e8e8, [0.25, 0.2, 0.1], { scale: [0.6, 1.5, 0.6], rot: [0, 0, -0.5], emit: 0.9 }),
+      part(new THREE.OctahedronGeometry(0.18, 0), 0xffffff, [-0.2, 0.18, -0.1], { scale: [0.6, 1.4, 0.6], rot: [0.4, 0, 0.5], emit: 0.9 }),
     ]);
     const clusters = instanced(clusterGeo, this.lavaMat, 40);
     let n = 0;
@@ -329,7 +329,7 @@ export class World {
         tmpObj.rotation.set(0, rand() * 6, 0);
         tmpObj.scale.setScalar(0.8 + rand() * 0.9);
         tmpObj.updateMatrix();
-        const col = new THREE.Color(isl.zone === 'sky' ? PALETTE.seed : isl.zone === 'forge' ? PALETTE.lumen : 0xffffff);
+        const col = new THREE.Color(isl.zone === 'sky' ? PALETTE.seed : isl.zone === 'forge' ? PALETTE.lumen : PALETTE.crystal);
         clusters.setMatrixAt(n, tmpObj.matrix);
         clusters.setColorAt(n, col);
         n++;

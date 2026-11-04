@@ -23,7 +23,7 @@ export class Input {
   /** Any input this session (used to dismiss the idle camera). */
   lastActivity = performance.now();
 
-  private joy = { id: -1, ox: 0, oy: 0, x: 0, y: 0 };
+  private joy = { id: -1, ox: 0, oy: 0, x: 0, y: 0, t: 0, moved: false };
   private drags = new Map<number, { x: number; y: number; sx: number; sy: number; t: number; moved: boolean; button: number }>();
   private joyEl: HTMLDivElement;
   private joyKnob: HTMLDivElement;
@@ -113,7 +113,7 @@ export class Input {
       document.body.classList.add('touch');
     }
     if (e.pointerType === 'touch' && this.joy.id < 0 && e.clientX < window.innerWidth * 0.42 && e.clientY > window.innerHeight * 0.35) {
-      this.joy = { id: e.pointerId, ox: e.clientX, oy: e.clientY, x: 0, y: 0 };
+      this.joy = { id: e.pointerId, ox: e.clientX, oy: e.clientY, x: 0, y: 0, t: performance.now(), moved: false };
       this.joyEl.style.left = `${e.clientX}px`;
       this.joyEl.style.top = `${e.clientY}px`;
       this.joyEl.classList.add('on');
@@ -139,6 +139,7 @@ export class Input {
       let dx = e.clientX - this.joy.ox;
       let dy = e.clientY - this.joy.oy;
       const l = Math.hypot(dx, dy);
+      if (l > 10) this.joy.moved = true;
       if (l > max) {
         dx = (dx / l) * max;
         dy = (dy / l) * max;
@@ -177,6 +178,8 @@ export class Input {
 
   private onUp(e: PointerEvent, cancelled = false): void {
     if (e.pointerId === this.joy.id) {
+      // A quick tap that never moved the stick is a normal tap (e.g. on the crystal).
+      if (!cancelled && !this.joy.moved && performance.now() - this.joy.t < 300 && this.enabled) this.clicks.push({ x: this.joy.ox, y: this.joy.oy });
       this.joy.id = -1;
       this.joy.x = this.joy.y = 0;
       this.joyEl.classList.remove('on');
