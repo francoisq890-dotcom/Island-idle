@@ -45,6 +45,8 @@ export class Hud {
   readonly workshopBtn: HTMLButtonElement;
   readonly prestigeBtn: HTMLButtonElement;
   readonly menuBtn: HTMLButtonElement;
+  readonly journalBtn: HTMLButtonElement;
+  readonly runesBtn: HTMLButtonElement;
   readonly muteBtn: HTMLButtonElement;
   readonly actBtn: HTMLButtonElement;
   readonly jumpBtn: HTMLButtonElement;
@@ -75,8 +77,10 @@ export class Hud {
     this.prestigeBtn = btn('prestige hide', `${ICONS.lighthouse}<span class="label">Phare</span><kbd>P</kbd>`, 'Faire descendre l’île (prestige)');
     this.workshopBtn = btn('', `${ICONS.hammer}<span class="label">Atelier</span><kbd>B</kbd><span class="badge"></span>`, 'Atelier : machines et améliorations');
     this.muteBtn = btn('icon-only', ICONS.sound, 'Son (M)');
+    this.journalBtn = btn('icon-only', ICONS.trophy, 'Journal : succès et constellations (J)');
+    this.runesBtn = btn('icon-only hide', ICONS.rune, 'Runes (R)');
     this.menuBtn = btn('icon-only', `${ICONS.menu}`, 'Carnet de bord (Échap)');
-    this.actions.append(this.prestigeBtn, this.workshopBtn, this.muteBtn, this.menuBtn);
+    this.actions.append(this.prestigeBtn, this.runesBtn, this.workshopBtn, this.journalBtn, this.muteBtn, this.menuBtn);
 
     const pad = el('div', 'touch-pad');
     this.jumpBtn = el('button', 'touch-btn small', ICONS.jump) as HTMLButtonElement;

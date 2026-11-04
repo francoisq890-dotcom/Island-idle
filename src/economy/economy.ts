@@ -21,6 +21,7 @@ import {
 import { createInitialState, emptyMachines, type GameState } from './state';
 import { bonusTotals, type BonusTotals } from './bonuses';
 import { runesAfterPrestige } from './runes';
+import { hasPerk } from '../config/constellations';
 
 /** A critical strike multiplies the pickaxe gain by this. */
 export const CRIT_MULT = 5;
@@ -149,12 +150,17 @@ export function computeRates(state: GameState): Rates {
         case 'refineYield':
           refYield *= e.mult;
           break;
+        case 'synergy':
+          if (e.target === 'refinery') refThroughput *= 1 + e.per * state.machines[e.source];
+          else machineMult[e.target] *= 1 + e.per * state.machines[e.source];
+          break;
       }
     }
   }
 
   const bonus = bonusTotals(state);
-  const pMult = prestigeMult(state.seeds) * (1 + bonus.prod);
+  const perkMult = (hasPerk(state.lifetimeSeeds, 'prod2') ? 2 : 1) * (hasPerk(state.lifetimeSeeds, 'prod3') ? 3 : 1);
+  const pMult = prestigeMult(state.seeds) * (1 + bonus.prod) * perkMult;
   const lumenMult = 1 + bonus.lumen;
   const perMachine = {} as Record<MachineId, MachineRate>;
   let shardsGross = 0;
@@ -335,6 +341,15 @@ export function doPrestige(state: GameState): number {
   state.stats.prestiges += 1;
   state.player = { ...fresh.player };
   state.islandSeed += 1;
+  // Constellation perks: the new island starts stronger.
+  const ls = state.lifetimeSeeds;
+  if (hasPerk(ls, 'drills5')) state.machines.drill = 5;
+  if (hasPerk(ls, 'bridgeForge')) state.zones.forge = true;
+  if (hasPerk(ls, 'altarLuck')) state.altar.luck = 5;
+  if (hasPerk(ls, 'picks')) {
+    state.upgrades.pick1 = true;
+    state.upgrades.pick2 = true;
+  }
   return gain;
 }
 

@@ -146,3 +146,17 @@ describe('save migration v1 → v2', () => {
     expect(RUNES).toHaveLength(28);
   });
 });
+
+describe('constellations (long-term goal)', () => {
+  it('perks make every new island start stronger', () => {
+    const s = createInitialState(0);
+    s.zones = { home: true, forge: true, geyser: true, sky: true };
+    s.stats.runShards = 1e9;
+    s.lifetimeSeeds = 50;
+    doPrestige(s);
+    expect(s.machines.drill).toBe(5);
+    expect(s.zones.forge).toBe(true);
+    expect(s.altar.luck).toBe(5);
+    expect(s.upgrades.pick1).toBeUndefined();
+  });
+});

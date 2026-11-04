@@ -21,8 +21,9 @@ export function applyOffline(state: GameState, now = Date.now()): OfflineReport 
   const awaySeconds = Math.max(0, (now - state.lastSeen) / 1000);
   const creditedSeconds = Math.min(awaySeconds, OFFLINE.maxSeconds);
   const rates = computeRates(state);
-  const shards = Math.max(0, rates.shards) * creditedSeconds * OFFLINE.efficiency;
-  const lumen = Math.max(0, rates.lumen) * creditedSeconds * OFFLINE.efficiency;
+  const eff = OFFLINE.efficiency * rates.offlineMult;
+  const shards = Math.max(0, rates.shards) * creditedSeconds * eff;
+  const lumen = Math.max(0, rates.lumen) * creditedSeconds * eff;
   addShards(state, shards);
   addLumen(state, lumen);
   state.lastSeen = now;

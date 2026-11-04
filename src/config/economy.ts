@@ -110,7 +110,9 @@ export type UpgradeEffect =
   | { type: 'machine'; machine: MachineId; mult: number }
   | { type: 'global'; mult: number }
   | { type: 'refineThroughput'; mult: number }
-  | { type: 'refineYield'; mult: number };
+  | { type: 'refineYield'; mult: number }
+  /** Synergy: `target` gains `per` (e.g. 0.02 = +2 %) for each `source` machine owned. */
+  | { type: 'synergy'; target: MachineId; source: MachineId; per: number };
 
 export interface UpgradeRequirement {
   machine?: [MachineId, number];
@@ -159,6 +161,12 @@ export const UPGRADES: UpgradeDef[] = [
 
   // --- Prisms ---------------------------------------------------------------
   { id: 'pri1', name: 'Lentilles polies', icon: 'prism', desc: 'Les prismes produisent 2× plus.', cost: { shards: 1500000, lumen: 2500 }, effects: [{ type: 'machine', machine: 'prism', mult: 2 }], requires: { machine: ['prism', 3] } },
+
+  // --- Synergies between machines -------------------------------------------
+  { id: 'syn1', name: 'Résonance des veines', icon: 'drill', desc: 'Foreuses : +2 % de production par excavatrice.', cost: { shards: 9000 }, effects: [{ type: 'synergy', target: 'drill', source: 'excavator', per: 0.02 }], requires: { machine: ['excavator', 10] } },
+  { id: 'syn2', name: 'Vapeur alchimique', icon: 'refinery', desc: 'Raffineries : +3 % de débit par geyser d’éther.', cost: { shards: 150000, lumen: 300 }, effects: [{ type: 'synergy', target: 'refinery', source: 'geyser', per: 0.03 }], requires: { machine: ['geyser', 5] } },
+  { id: 'syn3', name: 'Lumière focalisée', icon: 'prism', desc: 'Geysers : +4 % de production par prisme solaire.', cost: { shards: 8e6, lumen: 6000 }, effects: [{ type: 'synergy', target: 'geyser', source: 'prism', per: 0.04 }], requires: { machine: ['prism', 3] } },
+  { id: 'syn4', name: 'Chant du Nexus', icon: 'star', desc: 'Excavatrices : +1 % de production par foreuse.', cost: { shards: 600000, lumen: 500 }, effects: [{ type: 'synergy', target: 'excavator', source: 'drill', per: 0.01 }], requires: { machine: ['drill', 40] } },
 
   // --- Conveyors / global ---------------------------------------------------
   { id: 'belt1', name: 'Convoyeurs huilés', icon: 'belt', desc: 'Toute la production +25 %. Les tapis roulent plus vite.', cost: { shards: 300 }, effects: [{ type: 'global', mult: 1.25 }], requires: { machine: ['drill', 8] } },

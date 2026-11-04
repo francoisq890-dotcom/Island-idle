@@ -111,7 +111,8 @@ describe('prestige', () => {
     const gain = doPrestige(s);
     expect(gain).toBeGreaterThan(0);
     expect(s.seeds).toBe(gain);
-    expect(s.machines.drill).toBe(0);
+    // The "La Foreuse" constellation (5 lifetime seeds) gives 5 starting drills.
+    expect(s.machines.drill).toBe(gain >= 5 ? 5 : 0);
     expect(s.upgrades).toEqual({});
     expect(s.zones.forge).toBe(false);
     expect(s.settings.muted).toBe(true);

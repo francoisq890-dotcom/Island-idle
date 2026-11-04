@@ -35,9 +35,14 @@ import { clearStorage, exportSave, importSave, loadFromStorage, saveToStorage } 
 import { costHtml, Hud } from './ui/hud';
 import { ICONS } from './ui/icons';
 import { MACHINE_ICON, Panels } from './ui/panels';
+import { Journal } from './ui/journal';
 import { Celebration, RunePanel, runeEffect, statText as statTextFn } from './ui/runes';
 import { FAMILIES, RARITIES, RARITY_INDEX, type FamilyId, type RuneDef } from './config/runes';
 import { buyAltarUpgrade, cooldownOf, doRoll } from './economy/runes';
+import { EVENTS, between } from './config/events';
+import { hasPerk } from './config/constellations';
+import { GoldenCrystal, MeteorField } from './world/events';
+import { addLumen, addShards } from './economy/economy';
 import { checkAchievements } from './economy/achievements';
 import { Renderer } from './world/renderer';
 import { World, type Interactable } from './world/world';
@@ -71,11 +76,17 @@ export class Game {
   private titleOrbit = 0;
   private stepToggle = false;
   private runePanel!: RunePanel;
+  private journal!: Journal;
   private celebration!: Celebration;
   private rollTimer = 0;
   private lastFamily: FamilyId = 'stone';
   /** Global time scale (slow motion during big rune drops). */
   private timeScale = 1;
+  private meteors!: MeteorField;
+  private golden!: GoldenCrystal;
+  private goldenIt!: Interactable;
+  private nextMeteor = between(EVENTS.meteor.first);
+  private nextGolden = between(EVENTS.golden.first);
   private incomeAcc = 0;
   private lumenAcc = 0;
   private incomeTimer = 0;
@@ -130,6 +141,20 @@ export class Game {
     );
     this.panels.register(this.runePanel.el);
     this.celebration = new Celebration(uiRoot);
+    this.journal = new Journal(() => this.state, (k) => this.audio.ui(k));
+    this.panels.register(this.journal.el);
+
+    // Random events.
+    this.meteors = new MeteorField(this.world.particles);
+    this.golden = new GoldenCrystal(this.world.particles);
+    this.world.scene.add(this.meteors.group, this.golden.group);
+    this.goldenIt = { id: 'golden', kind: 'golden', anchor: new THREE.Vector3(), range: 3.2, sphere: new THREE.Sphere(new THREE.Vector3(), 1.6), active: false };
+    this.world.interactables.push(this.goldenIt);
+    this.meteors.onLand = () => {
+      this.audio.meteorLand();
+      this.world.rig.shake(0.12);
+    };
+    this.meteors.onCollect = (p) => this.collectMeteor(p);
 
     this.world.hooks = {
       onArrive: (k) => this.audio.arrive(k),
@@ -260,6 +285,7 @@ export class Game {
     if (!this.state.flags.nearCrystal && this.world.distanceTo(this.world.interactables[0], p) < RANGES.harvest + 0.5) this.state.flags.nearCrystal = true;
 
     this.world.update(dt, this.state);
+    this.updateEvents(dt);
     this.updateUi(dt);
     this.hud.update(dt);
 
@@ -296,6 +322,7 @@ export class Game {
       this.panels.toggleWorkshop(this.currentObjective()?.id === 'pick1' ? 'upgrades' : undefined);
     }
     if (inp.pressed('KeyM')) this.toggleMute();
+    if (inp.pressed('KeyJ')) this.togglePanel(this.journal.el, () => this.journal.refresh());
     if (inp.pressed('KeyR')) this.openRunes(this.near?.kind === 'altar' ? this.near.family! : this.lastFamily);
     if (inp.pressed('KeyP') && this.state.zones.sky) this.panels.showPrestige();
 
@@ -345,6 +372,10 @@ export class Game {
         break;
       case 'lighthouse':
         this.panels.showPrestige();
+        break;
+      case 'golden':
+        if (d <= it.range + (fromKey ? 0 : 6)) this.strikeGolden();
+        else this.tooFar('Approche-toi du cristal doré');
         break;
       case 'altar':
         if (this.panels.open === this.runePanel.el && this.runePanel.family === it.family && fromKey) this.rollRunes(it.family!, false);
@@ -532,6 +563,114 @@ export class Game {
     return got;
   }
 
+  private togglePanel(p: HTMLElement, before?: () => void): void {
+    if (this.panels.open === p) return this.panels.close();
+    before?.();
+    this.panels.show(p);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Random events
+  // ---------------------------------------------------------------------------
+
+  private updateEvents(dt: number): void {
+    const p = this.world.player.position;
+    this.meteors.update(dt, this.time, p, EVENTS.meteor.magnet);
+    if (this.golden.update(dt, this.time)) {
+      this.goldenIt.active = false;
+      this.hud.toast('lumen', 'Le cristal doré s’est éteint…', 'Il reviendra. Sois plus rapide la prochaine fois !');
+    }
+    if (!this.started || this.busy) return;
+    this.nextMeteor -= dt;
+    this.nextGolden -= dt;
+    if (this.nextMeteor <= 0 && this.meteors.active === 0) {
+      this.nextMeteor = between(EVENTS.meteor.every);
+      this.startMeteorShower();
+    }
+    if (this.nextGolden <= 0 && !this.golden.active && this.state.stats.harvests >= 10) {
+      this.nextGolden = between(EVENTS.golden.every) * (hasPerk(this.state.lifetimeSeeds, 'goldenRush') ? 0.5 : 1);
+      this.spawnGolden();
+    }
+  }
+
+  /** Random free spots on solid ground around the player. */
+  private freeSpots(n: number, minR: number, maxR: number): THREE.Vector3[] {
+    const out: THREE.Vector3[] = [];
+    const p = this.world.player.position;
+    const g = this.world.ground;
+    for (let tries = 0; tries < n * 40 && out.length < n; tries++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = minR + Math.random() * (maxR - minR);
+      const x = p.x + Math.cos(a) * r;
+      const z = p.z + Math.sin(a) * r;
+      if (!g.walkable(x, z) || g.overlap(x, z) > 0 || g.bridgeAt(x, z)) continue;
+      if (out.some((o) => Math.hypot(o.x - x, o.z - z) < 2)) continue;
+      out.push(new THREE.Vector3(x, g.heightAt(x, z), z));
+    }
+    return out;
+  }
+
+  private startMeteorShower(): void {
+    const zones = Object.values(this.state.zones).filter(Boolean).length;
+    const spots = this.freeSpots(EVENTS.meteor.count + zones * EVENTS.meteor.perZone, 4, 16);
+    if (!spots.length) return;
+    this.meteors.spawn(spots, EVENTS.meteor.life);
+    this.audio.meteorShower();
+    this.hud.toast('meteor', 'Pluie de météores !', 'Ramasse les éclats tombés du ciel avant qu’ils ne s’éteignent.', 'ether');
+    this.state.counters.eventsSeen++;
+  }
+
+  private collectMeteor(at: THREE.Vector3): void {
+    const v = Math.max(10, this.rates.shards * EVENTS.meteor.rewardSeconds + this.rates.click * EVENTS.meteor.rewardClicks);
+    addShards(this.state, v);
+    this.state.counters.meteors++;
+    this.audio.pickup();
+    this.hud.float(at.x, at.y + 1.2, at.z, `+${formatNumber(v)}${ICONS.shard}`, 'big', 1.2);
+    this.afterProgress();
+  }
+
+  private spawnGolden(): void {
+    const spot = this.freeSpots(1, 5, 11)[0];
+    if (!spot) return;
+    this.golden.spawn(spot, EVENTS.golden.hits, EVENTS.golden.time);
+    this.goldenIt.anchor.copy(spot).setY(spot.y + 3.2);
+    this.goldenIt.sphere.center.copy(spot).setY(spot.y + 1.1);
+    this.goldenIt.active = true;
+    this.audio.goldenAppear();
+    this.hud.toast('lumen', 'Un cristal doré est apparu !', `Frappe-le ${EVENTS.golden.hits} fois en ${EVENTS.golden.time} s pour un gros butin.`, 'gold');
+    this.state.counters.eventsSeen++;
+  }
+
+  private strikeGolden(): void {
+    if (!this.golden.active) return;
+    this.world.player.requestStrike(
+      this.golden.position,
+      () => {
+        if (!this.golden.active) return;
+        const small = this.rates.click * EVENTS.golden.hitClicks;
+        addShards(this.state, small);
+        this.audio.harvest(this.world.player.pickTierIndex + 1);
+        this.world.rig.shake(0.15);
+        const at = this.golden.position;
+        this.hud.float(at.x, at.y + 2.6, at.z, `+${formatNumber(small)}${ICONS.shard}`, 'lumen', 1);
+        if (this.golden.hit()) {
+          const big = Math.max(100, this.rates.shards * EVENTS.golden.rewardSeconds + this.rates.click * 40);
+          const lum = this.rates.lumen * EVENTS.golden.rewardSeconds * 0.5;
+          addShards(this.state, big);
+          if (lum > 0) addLumen(this.state, lum);
+          this.state.counters.golden++;
+          this.goldenIt.active = false;
+          this.audio.goldenBreak();
+          this.world.rig.shake(0.6);
+          this.hud.float(at.x, at.y + 3.2, at.z, `+${formatNumber(big)}${ICONS.shard}`, 'huge lumen', 2);
+          this.hud.toast('lumen', 'Cristal doré brisé !', `+${formatNumber(big)} éclats${lum > 0 ? ` et +${formatNumber(lum)} Lumen` : ''}`, 'gold');
+          this.afterProgress();
+        }
+      },
+      1.9,
+    );
+  }
+
   /** Brief slow motion, easing back to normal speed. */
   private slowMo(seconds: number, scale: number): void {
     this.timeScale = scale;
@@ -692,6 +831,8 @@ export class Game {
       this.checkObjectives();
       this.panels.refresh();
       if (this.panels.open === this.runePanel.el) this.runePanel.refresh();
+      if (this.panels.open === this.journal.el) this.journal.refresh();
+      this.hud.runesBtn.classList.toggle('hide', this.state.runeStats.rolls === 0 && !this.state.flags.migratedV2);
       this.afterProgress();
       const ready = canPrestige(s);
       this.world.lighthouse.setAwake(ready);
@@ -752,6 +893,7 @@ export class Game {
   private updateBeacon(target: ObjectiveTarget): void {
     let pos: THREE.Vector3 | null = null;
     let h = 3.2;
+    if (this.golden.active) target = { kind: 'golden' } as unknown as ObjectiveTarget;
     switch (target.kind) {
       case 'crystal':
         pos = this.world.beaconTarget('crystal');
@@ -777,6 +919,11 @@ export class Game {
         pos = this.world.beaconTarget('altar', target.family);
         h = 4.6;
         break;
+      default:
+        if ((target as { kind: string }).kind === 'golden') {
+          pos = this.golden.position.clone();
+          h = 3.6;
+        }
     }
     // Hide when the player is already there.
     if (pos && Math.hypot(pos.x - this.world.player.position.x, pos.z - this.world.player.position.z) < 3.2) pos = null;
@@ -790,7 +937,7 @@ export class Game {
   }
 
   private actionLabel(it: Interactable): string {
-    if (it.kind === 'crystal') return 'Récolter';
+    if (it.kind === 'crystal' || it.kind === 'golden') return 'Frapper';
     if (it.kind === 'altar') return 'Runes';
     if (it.kind === 'site' || it.kind === 'bridge') return 'Construire';
     return 'Phare';
@@ -817,6 +964,8 @@ export class Game {
       }
       case 'lighthouse':
         return `${this.keyCap()} Parler au Phare`;
+      case 'golden':
+        return `${this.keyCap()} Frapper le cristal doré <span class="cost">${this.golden.hits}/${this.golden.maxHits}</span>`;
       case 'altar': {
         const f = FAMILIES[it.family!];
         return `${this.keyCap()} ${f.altarName} <span class="cost">${costHtml(f.rollCost, have)} / tirage</span>`;
@@ -870,6 +1019,8 @@ export class Game {
           <div class="foot">${act('Construire')} <span style="margin-left:auto">${costHtml(z.cost, have)}</span></div>
           ${!canAfford(s, z.cost) && isFinite(t) ? `<div class="kv" style="margin-top:4px"><span>Disponible</span><b>dans ${formatDuration(t)}</b></div>` : ''}`;
       }
+      case 'golden':
+        return `<h3>${ICONS.lumen} Cristal doré</h3><p>Frappe-le ${this.golden.maxHits} fois avant qu’il ne s’éteigne !</p><div class="kv"><span>Coups</span><b>${this.golden.hits} / ${this.golden.maxHits}</b></div><div class="kv"><span>Temps</span><b>${Math.ceil(this.golden.timeLeft)} s</b></div>`;
       case 'altar': {
         const f = FAMILIES[it.family!];
         return `<h3>${ICONS.altar} ${f.altarName}</h3>
@@ -901,6 +1052,8 @@ export class Game {
       this.panels.show(this.panels.menu);
     });
     this.hud.muteBtn.addEventListener('click', () => this.toggleMute());
+    this.hud.journalBtn.addEventListener('click', () => this.togglePanel(this.journal.el, () => this.journal.refresh()));
+    this.hud.runesBtn.addEventListener('click', () => this.openRunes(this.lastFamily));
     this.hud.prestigeBtn.addEventListener('click', () => {
       this.audio.click();
       this.panels.showPrestige();

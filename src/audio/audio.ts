@@ -273,6 +273,32 @@ export class Audio {
     this.noise({ freq: 3000, q: 0.5, decay: 1.6, gain: 0.05, type: 'highpass', when: 0.2 });
   }
 
+  meteorShower(): void {
+    this.noise({ freq: 300, q: 0.6, decay: 2.2, gain: 0.12, type: 'lowpass', sweep: 6 });
+    [0, 5, 10].forEach((n, i) => this.tone(this.midi(76 + n), { type: 'sine', decay: 0.8, gain: 0.04, when: 0.3 + i * 0.2, reverb: 1 }));
+  }
+
+  meteorLand(): void {
+    this.tone(70 + Math.random() * 20, { type: 'sine', decay: 0.25, gain: 0.15, glide: 0.5 });
+    this.noise({ freq: 900, q: 0.8, decay: 0.15, gain: 0.05 });
+  }
+
+  pickup(): void {
+    const n = 79 + PENTA[Math.floor(Math.random() * 6)];
+    this.tone(this.midi(n), { type: 'triangle', decay: 0.25, gain: 0.07, reverb: 0.6 });
+    this.tone(this.midi(n + 12), { type: 'sine', decay: 0.35, gain: 0.04, when: 0.06, reverb: 0.8 });
+  }
+
+  goldenAppear(): void {
+    [0, 4, 7, 11, 14].forEach((n, i) => this.tone(this.midi(74 + n), { type: 'sine', decay: 0.9, gain: 0.05, when: i * 0.07, reverb: 1 }));
+  }
+
+  goldenBreak(): void {
+    this.noise({ freq: 2500, q: 1.2, decay: 0.4, gain: 0.12 });
+    [0, 4, 7, 12, 16, 19, 24].forEach((n, i) => this.tone(this.midi(72 + n), { type: 'triangle', decay: 0.6, gain: 0.06, when: i * 0.045, reverb: 1 }));
+    this.tone(60, { type: 'sine', decay: 0.8, gain: 0.25, glide: 0.5 });
+  }
+
   achievement(): void {
     [0, 4, 7, 12].forEach((n, i) => this.tone(this.midi(79 + n), { type: 'triangle', decay: 0.5, gain: 0.06, when: i * 0.06, reverb: 0.9 }));
   }

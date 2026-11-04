@@ -25,7 +25,7 @@ import { Player } from './player';
 import type { Renderer } from './renderer';
 import { buildIslandMesh, distToPolyline, Ground, islandTopHeight, type Trail } from './terrain';
 
-export type InteractKind = 'crystal' | 'site' | 'bridge' | 'lighthouse' | 'altar';
+export type InteractKind = 'crystal' | 'site' | 'bridge' | 'lighthouse' | 'altar' | 'golden';
 
 export interface Interactable {
   id: string;
@@ -407,6 +407,7 @@ export class World {
       if (it.kind === 'bridge') it.active = this.bridges.get(it.zone!)!.available;
       if (it.kind === 'lighthouse') it.active = state.zones.sky;
       if (it.kind === 'altar') it.active = state.zones[it.zone!];
+      if (it.kind === 'golden') continue;
     }
 
     // Conveyor flows (visual density from production rates).
@@ -500,6 +501,7 @@ export class World {
       const a = this.altars.get(it.family!)!.position;
       return Math.hypot(p.x - a.x, p.z - a.z) - 2.2;
     }
+    if (it.kind === 'golden') return Math.hypot(p.x - it.anchor.x, p.z - it.anchor.z) - 1;
     return Math.hypot(p.x - it.anchor.x, p.z - it.anchor.z);
   }
 
