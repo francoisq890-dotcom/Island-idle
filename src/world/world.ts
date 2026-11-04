@@ -199,7 +199,7 @@ export class World {
     this.interactables.push({ id: 'lighthouse', kind: 'lighthouse', zone: 'sky', anchor: lh.clone().setY(lh.y + 3), range: RANGES.lighthouse, sphere: new THREE.Sphere(lh, 3), active: false });
 
     // Player.
-    this.scene.add(this.player.root);
+    this.scene.add(this.player.root, this.player.trail.mesh);
     this.player.onStep = () => this.hooks.onStep?.();
     this.player.onLand = (p) => this.particles.smoke(p.clone().setY(p.y + 0.1), { count: 6, color: 0xf4e6d4, speed: 2.5, life: 0.5, size: 0.18, up: 0.5 });
 
@@ -502,14 +502,34 @@ export class World {
   }
 
   /** Strike the crystal: visual + particles. */
+  /** Point on the crystal facing the player, where the pick lands. */
+  impactPoint(out = new THREE.Vector3()): THREE.Vector3 {
+    const c = this.crystal.position;
+    const p = this.player.position;
+    const d = new THREE.Vector3(p.x - c.x, 0, p.z - c.z).normalize();
+    return out.set(c.x + d.x * 0.85, c.y + 1.15, c.z + d.z * 0.85);
+  }
+
+  /** Impact of the pickaxe on the crystal: sparks scale with the gain and the pick tier. */
   harvestFx(value: number): void {
     this.crystal.hit();
-    const hp = this.crystal.hitPoint.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.6, Math.random() * 0.6, (Math.random() - 0.5) * 0.6));
+    const tier = this.player.pickTier;
+    const hp = this.impactPoint().add(new THREE.Vector3((Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.3));
     const big = Math.min(1, Math.log10(1 + value) / 4);
-    this.particles.sparks(hp, { count: 10 + Math.round(big * 14), color: PALETTE.crystal, speed: 5 + big * 3, life: 0.7, size: 0.09 + big * 0.05, up: 2.5 });
-    this.particles.sparks(hp, { count: 4, color: 0xffffff, speed: 3, life: 0.4, size: 0.06, up: 1 });
-    this.rig.shake(0.12);
-    this.player.strike(this.crystal.position);
+    const away = new THREE.Vector3(this.player.position.x - hp.x, 0.6, this.player.position.z - hp.z).normalize().multiplyScalar(2);
+    this.particles.sparks(hp, { count: 10 + Math.round(big * 12 + tier.power * 14), color: PALETTE.crystal, speed: 5 + big * 3 + tier.power * 2, life: 0.7, size: 0.09 + big * 0.05, up: 2.5, dir: away });
+    this.particles.sparks(hp, { count: 6 + Math.round(tier.power * 10), color: tier.spark, speed: 6 + tier.power * 3, life: 0.35 + tier.power * 0.2, size: 0.05 + tier.power * 0.03, up: 1.5, gravity: 4 });
+    if (tier.power >= 1) this.particles.smoke(hp, { count: 3, color: tier.spark, speed: 1.2, life: 0.5, size: 0.2, up: 0.3, grow: 2 });
+    this.rig.shake(0.1 + tier.power * 0.12);
+  }
+
+  /** New pickaxe reveal: light burst around the raised pick. */
+  pickRevealFx(at: THREE.Vector3): void {
+    const tier = this.player.pickTier;
+    this.particles.sparks(at, { count: 50 + Math.round(tier.power * 60), color: tier.spark, speed: 7, life: 1.2, size: 0.1, up: 2, gravity: 2 });
+    this.particles.sparks(at, { count: 12, color: 0xffffff, speed: 4, life: 0.7, size: 0.05, gravity: 1 });
+    this.particles.smoke(at, { count: 10, color: tier.spark, speed: 2.5, life: 0.9, size: 0.25, grow: 2.5, gravity: -0.2 });
+    this.rig.shake(0.35);
   }
 
   update(dt: number, state: GameState): void {
@@ -528,6 +548,7 @@ export class World {
     }
     this.conveyors.update(dt);
     this.particles.update(dt);
+    this.player.trail.update(dt);
     this.renderer.focusShadows(this.player.position);
   }
 

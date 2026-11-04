@@ -80,6 +80,9 @@ export class Game {
     this.renderer.setQuality(this.state.settings.quality);
     this.world = new World(this.renderer, this.tweens, this.state);
     this.world.player.setGlow(this.state.seeds > 0 ? PALETTE.seed : PALETTE.lumen);
+    this.world.player.setPickTier(pickTierOf(this.state));
+    this.world.player.onSwing = () => this.audio.swoosh(this.world.player.pickTierIndex);
+    this.world.player.onPresentPeak = (at) => this.world.pickRevealFx(at);
     this.input = new Input(canvas);
 
     this.hud = new Hud(uiRoot, (x, y, z, out) => this.world.project(new THREE.Vector3(x, y, z), out));
@@ -318,13 +321,16 @@ export class Game {
   // Actions
   // ---------------------------------------------------------------------------
 
+  /** Swing the pickaxe at the crystal; the gain lands on the impact frame. */
   private doHarvest(): void {
     this.state.flags.nearCrystal = true;
-    const v = harvest(this.state, this.rates);
-    this.world.harvestFx(v);
-    this.audio.harvest();
-    const hp = this.world.crystal.hitPoint;
-    this.hud.float(hp.x + (Math.random() - 0.5) * 0.8, hp.y + 0.6, hp.z + (Math.random() - 0.5) * 0.8, `+${formatNumber(v, 1)}${ICONS.shard}`, v >= 100 ? 'big' : '');
+    this.world.player.requestStrike(this.world.crystal.position, () => {
+      const v = harvest(this.state, this.rates);
+      this.world.harvestFx(v);
+      this.audio.harvest(this.world.player.pickTierIndex);
+      const hp = this.world.impactPoint();
+      this.hud.float(hp.x + (Math.random() - 0.5) * 0.6, hp.y + 0.7, hp.z + (Math.random() - 0.5) * 0.6, `+${formatNumber(v, 1)}${ICONS.shard}`, v >= 100 ? 'big' : '');
+    });
   }
 
   buyMachine(id: MachineId, n: number): void {
@@ -372,8 +378,16 @@ export class Game {
     const up = getUpgrade(id)!;
     this.markDirty();
     this.world.sync(this.state, this.rates, true);
-    this.audio.upgrade();
-    this.hud.toast(up.icon, up.name, up.desc, 'gold');
+    const tier = pickTierOf(this.state);
+    if (tier !== this.world.player.pickTierIndex) {
+      // New pickaxe: the explorer raises it overhead.
+      this.world.player.setPickTier(tier, true);
+      this.audio.pickReveal(tier);
+      this.hud.toast('pick', `Nouvelle pioche : ${up.name}`, up.desc, 'gold');
+    } else {
+      this.audio.upgrade();
+      this.hud.toast(up.icon, up.name, up.desc, 'gold');
+    }
     const p = this.world.player.position;
     this.world.particles.sparks(p.clone().setY(p.y + 1.2), { count: 30, color: PALETTE.lumen, speed: 5, life: 0.9, size: 0.08, up: 3 });
     this.checkObjectives();
@@ -453,6 +467,7 @@ export class Game {
     this.world.resetForNewIsland(this.state);
     this.world.player.teleport(SPAWN.x, SPAWN.z, SPAWN.yaw, this.world.ground);
     this.world.player.setGlow(PALETTE.seed);
+    this.world.player.setPickTier(pickTierOf(this.state));
     rig.yaw = SPAWN.yaw;
     rig.pitch = 0.5;
     const rise = this.world.rise();
@@ -805,6 +820,11 @@ const MACHINE_ICON: Record<MachineId, 'drill' | 'excavator' | 'refinery' | 'geys
   geyser: 'geyser',
   prism: 'prism',
 };
+
+/** Visual pickaxe tier = number of pickaxe upgrades owned (0..6). */
+export function pickTierOf(s: GameState): number {
+  return ['pick1', 'pick2', 'pick3', 'pick4', 'pick5', 'pick6'].filter((id) => s.upgrades[id]).length;
+}
 
 function MODEL_H(h: number): number {
   return h + 0.8;

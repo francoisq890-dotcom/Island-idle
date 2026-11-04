@@ -135,6 +135,8 @@ export const UPGRADES: UpgradeDef[] = [
   { id: 'pick2', name: 'Pioche de quartz', icon: 'pick', desc: 'Chaque coup de pioche rapporte 2× plus.', cost: { shards: 350 }, effects: [{ type: 'click', mult: 2 }], requires: { machine: ['drill', 5] } },
   { id: 'pick3', name: 'Pioche résonante', icon: 'pick', desc: 'Chaque coup rapporte en plus 5 % de ta production par seconde.', cost: { shards: 2500 }, effects: [{ type: 'clickPct', pct: 0.05 }], requires: { machine: ['excavator', 5] } },
   { id: 'pick4', name: "Pioche d'étoile", icon: 'pick', desc: 'Coups ×3 et +5 % supplémentaires de ta production par seconde.', cost: { shards: 60000, lumen: 60 }, effects: [{ type: 'click', mult: 3 }, { type: 'clickPct', pct: 0.05 }], requires: { zone: 'geyser' } },
+  { id: 'pick5', name: 'Pioche des marées', icon: 'pick', desc: 'Coups ×3 et +5 % de ta production par seconde. Lame d’obsidienne d’éther.', cost: { shards: 2.5e6, lumen: 2500 }, effects: [{ type: 'click', mult: 3 }, { type: 'clickPct', pct: 0.05 }], requires: { zone: 'sky' } },
+  { id: 'pick6', name: 'Pioche de l’Aube', icon: 'pick', desc: 'Coups ×5 et +10 % de ta production par seconde. La pioche des légendes.', cost: { shards: 1.2e8, lumen: 40000 }, effects: [{ type: 'click', mult: 5 }, { type: 'clickPct', pct: 0.1 }], requires: { machine: ['prism', 8] } },
 
   // --- Drills ---------------------------------------------------------------
   { id: 'drill1', name: 'Mèches trempées', icon: 'drill', desc: 'Les foreuses produisent 2× plus.', cost: { shards: 100 }, effects: [{ type: 'machine', machine: 'drill', mult: 2 }], requires: { machine: ['drill', 3] } },

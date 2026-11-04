@@ -128,3 +128,36 @@ Palette restreinte (`src/config/palette.ts`) : ciel lavande → pêche, herbes v
   - Joystick tactile dans les 4 directions.
 - Sur l'ancien code, ce test échoue sur 7 cas, ce qui prouve qu'il couvre bien le bug. Il tourne en CI avant chaque déploiement.
 - Tests unitaires du mapping et des collisions : `tests/input.test.ts`.
+
+## 2. La pioche
+
+**Cause du mauvais geste.** Le gain, les étincelles et le son étaient déclenchés *au clic*, au moment où le bras commençait seulement à monter. La phase suivante (65 % de la durée) ramenait lentement le bras : on voyait donc « l'impact » suivi d'un bras qui part en arrière. L'arc lui-même passait par le bas du corps, pas par-dessus l'épaule.
+
+**Nouvelle frappe**, une machine à états dans `Player`. θ est l'angle de l'épaule : 0 = bras le long du corps, π = bras au-dessus de la tête.
+
+| Phase | Durée | Ce qui se passe |
+|---|---|---|
+| Armé | 0,13 s | La pioche monte devant puis par-dessus l'épaule (θ 0,25 → 3,5). Le buste part en arrière. L'explorateur **se tourne vers le cristal** et **fait un pas** pour être à portée ; la frappe attend d'être alignée. |
+| Anticipation | 0,06 s | Petit recul supplémentaire (θ → 3,78). |
+| Frappe | 0,075 s | Arc rapide par-dessus la tête vers le bas (θ → 1,02, accélération cubique). Souffle sonore, traînée lumineuse. |
+| Impact | 0,055 s (≈3 frames) | **Hit-stop** : la pose est gelée. C'est *ici* que tombent le gain, les étincelles, le son, le nombre flottant et le tremblement. |
+| Rebond | 0,09 s | Petit rebond sur le cristal. |
+| Retour | 0,2 s | Retour au repos. |
+
+- Prise à deux mains : le bras gauche suit le geste.
+- Les clics sont mémorisés (un en attente) et s'enchaînent sans repasser par le repos : environ 3 coups/s, ce qui reste cohérent avec le bot d'équilibrage. La vitesse est un multiplicateur (`strikeSpeed`) que les runes pourront augmenter.
+
+**7 modèles** (pioche de départ + 6 améliorations ; deux améliorations ajoutées : *Pioche des marées*, *Pioche de l'Aube*) :
+
+| Palier | Pioche | Aspect | Traînée |
+|---|---|---|---|
+| 0 | Départ | bois et fer | aucune |
+| 1 | Renforcée | bagues de cuivre, acier | traînée crème |
+| 2 | Quartz | tête rose translucide | traînée rose |
+| 3 | Résonante | cristal d'éther cyan lumineux | traînée cyan, lumière portée |
+| 4 | Étoile | or, cœur étoilé | traînée dorée |
+| 5 | Marées | double lame d'obsidienne à liseré violet, anneaux runiques en orbite | traînée violette |
+| 6 | Aube | lames tricolores, éclats en orbite | traînée arc-en-ciel cyan → or → violet |
+
+- Les étincelles, le tremblement et le son d'impact (couches graves et harmoniques ajoutées) grandissent avec le palier.
+- **Changement de palier** : l'explorateur brandit la nouvelle pioche à deux mains au-dessus de sa tête (pose « objet obtenu »), avec gerbe de lumière, fanfare montante et annonce à l'écran.

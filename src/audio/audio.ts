@@ -142,17 +142,37 @@ export class Audio {
 
   // --- Sound effects ------------------------------------------------------------
 
-  /** Crystalline strike — pitch climbs with rapid combos. */
-  harvest(): void {
+  /** Pickaxe impact on the crystal — pitch climbs with rapid combos, richer with better picks. */
+  harvest(tier = 0): void {
     this.combo = Math.min(this.combo + 1, PENTA.length - 1);
     this.comboTimer = 0.7;
     const base = 72 + PENTA[this.combo];
     const f = this.midi(base);
-    this.tone(f, { type: 'sine', decay: 0.55, gain: 0.16, reverb: 0.6 });
+    // Metal-on-crystal transient.
+    this.noise({ freq: 3200 + tier * 300, q: 3, decay: 0.045, gain: 0.12 });
+    this.tone(160 - tier * 8, { type: 'triangle', decay: 0.09, gain: 0.12 + tier * 0.015, glide: 0.45 });
+    // Crystal ring.
+    this.tone(f, { type: 'sine', decay: 0.55, gain: 0.15, reverb: 0.6 });
     this.tone(f * 2.76, { type: 'sine', decay: 0.25, gain: 0.05, reverb: 0.4 });
     this.tone(f * 5.4, { type: 'sine', decay: 0.08, gain: 0.03 });
-    this.noise({ freq: 5000, q: 2, decay: 0.05, gain: 0.08 });
-    this.tone(110, { type: 'triangle', decay: 0.08, gain: 0.07, glide: 0.5 });
+    if (tier >= 2) this.tone(f * 1.5, { type: 'sine', decay: 0.7, gain: 0.04 + tier * 0.006, reverb: 0.9, when: 0.02 });
+    if (tier >= 4) this.tone(f * 0.5, { type: 'triangle', decay: 0.35, gain: 0.06, reverb: 0.5 });
+    if (tier >= 5) this.noise({ freq: 600, q: 0.8, decay: 0.25, gain: 0.08, type: 'lowpass', sweep: 0.3 });
+    if (tier >= 6) [12, 19, 24].forEach((n, i) => this.tone(this.midi(base + n), { type: 'sine', decay: 0.5, gain: 0.025, when: 0.03 + i * 0.03, reverb: 1 }));
+  }
+
+  /** Swoosh of the swing (played on the downswing). */
+  swoosh(tier = 0): void {
+    this.noise({ freq: 900 + tier * 150, q: 1.2, decay: 0.12, gain: 0.05 + tier * 0.008, type: 'bandpass', sweep: 2.2 });
+  }
+
+  /** New pickaxe: rising fanfare + shimmer. */
+  pickReveal(tier: number): void {
+    const root = 60 + tier * 2;
+    [0, 4, 7, 12, 16, 19, 24].forEach((n, i) => this.tone(this.midi(root + n), { type: 'triangle', decay: 0.6, gain: 0.07, when: i * 0.07, reverb: 0.9 }));
+    [0, 7, 12].forEach((n) => this.tone(this.midi(root + 12 + n), { type: 'sine', attack: 0.4, decay: 1.8, gain: 0.05, when: 0.5, reverb: 1 }));
+    this.noise({ freq: 2500, q: 0.6, decay: 1.2, gain: 0.06, when: 0.45, type: 'highpass' });
+    this.tone(55 + tier * 4, { type: 'sine', decay: 0.8, gain: 0.25, glide: 0.5, when: 0.45 });
   }
 
   buy(): void {
