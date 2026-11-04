@@ -50,6 +50,8 @@ export interface GameState {
   /** Family rolled automatically (null = auto-roll off). */
   runeAuto: FamilyId | null;
   runeStats: { rolls: number; runes: number; best: number };
+  /** Rolls per family on this island (each roll makes the next one a bit dearer). */
+  familyRolls: Record<FamilyId, number>;
   /** Achievement id → unlocked (permanent). */
   achievements: Record<string, true>;
   /** Counters for achievements / events (lifetime). */
@@ -94,6 +96,7 @@ export function createInitialState(now = Date.now()): GameState {
     altar: { luck: 0, bulk: 0, speed: 0, auto: false },
     runeAuto: null,
     runeStats: { rolls: 0, runes: 0, best: -1 },
+    familyRolls: { stone: 0, ember: 0, mist: 0, star: 0 },
     achievements: {},
     counters: { crits: 0, meteors: 0, golden: 0, eventsSeen: 0 },
     lifetimeSeeds: 0,

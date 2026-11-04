@@ -3,7 +3,7 @@
  * offline report and prestige. Each line of a ledger is one decision: what it
  * is, what it yields, what it costs.
  */
-import { MACHINES, MACHINE_ORDER, PRESTIGE, UPGRADES, ZONES, ZONE_ORDER, type Cost, type MachineId, type UpgradeDef, type ZoneId } from '../config/economy';
+import { MACHINES, MACHINE_ORDER, PRESTIGE, prestigeThreshold, UPGRADES, ZONES, ZONE_ORDER, type Cost, type MachineId, type UpgradeDef, type ZoneId } from '../config/economy';
 import {
   affordProgress,
   canAfford,
@@ -519,11 +519,11 @@ export class Panels {
          ready
            ? `<div class="big-gain"><div class="violet">${ICONS.seed}+${gain}</div></div>
               <p class="seed-preview">Graine${gain > 1 ? 's' : ''} d’étoile · production <b>+${curBonus} %</b> → <b>+${newBonus} %</b></p>`
-           : `<p class="seed-preview">Le Phare dort encore. Récolte <b>${formatNumber(PRESTIGE.unlockAt)}</b> éclats sur cette île pour l’éveiller<br>(actuellement ${formatNumber(s.stats.runShards)}).</p>`
+           : `<p class="seed-preview">Le Phare dort encore. Récolte <b>${formatNumber(prestigeThreshold(s.stats.prestiges))}</b> éclats sur cette île pour l’éveiller<br>(actuellement ${formatNumber(s.stats.runShards)}).</p>`
        }
        <div class="compare">
-         <div class="lose"><h4>Tu perds</h4>Éclats et Lumen<br>Machines et améliorations<br>Ponts<br>Runes communes à rares</div>
-         <div class="keep"><h4>Tu gardes</h4>Graines d’étoile (+${Math.round(PRESTIGE.bonusPerSeed * 100)} % chacune)<br>Runes épiques et plus<br>Succès et statistiques${extraKeep}</div>
+         <div class="lose"><h4>Tu perds</h4>Éclats et Lumen<br>Machines et améliorations<br>Ponts<br>Runes communes à épiques</div>
+         <div class="keep"><h4>Tu gardes</h4>Graines d’étoile (+${Math.round(PRESTIGE.bonusPerSeed * 100)} % chacune)<br>Runes légendaires et plus<br>Succès et statistiques${extraKeep}</div>
        </div>
        <p class="note">Plus tu récoltes avant de descendre, plus tu gagnes de graines.</p>
        <div class="row-btns"><button class="pill-btn" data-act="no">Pas encore</button><button class="pill-btn violet" data-act="yes" ${ready ? '' : 'disabled'}>Faire descendre l’île</button></div>`,

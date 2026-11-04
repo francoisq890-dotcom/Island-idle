@@ -7,8 +7,8 @@ export const EVENTS = {
     count: 7,
     perZone: 2,
     /** Each meteor is worth this many seconds of production (+ some clicks). */
-    rewardSeconds: 35,
-    rewardClicks: 12,
+    rewardSeconds: 7,
+    rewardClicks: 8,
     life: 30,
     magnet: 3.6,
   },
@@ -18,7 +18,7 @@ export const EVENTS = {
     hits: 12,
     time: 25,
     /** Breaking it is worth this many seconds of production. */
-    rewardSeconds: 240,
+    rewardSeconds: 75,
     /** Each hit gives this many clicks worth. */
     hitClicks: 3,
   },

@@ -1,17 +1,24 @@
 /**
- * Automated player used to balance the economy (see scripts/simulate.ts and
- * tests/balance.test.ts). It clicks at a fixed rate and greedily buys whatever
- * pays for itself the fastest, opening new zones as soon as it can.
+ * Automated player used to balance the economy (scripts/simulate.ts and
+ * tests/balance.test.ts). It strikes the crystal at a fixed rate, greedily buys
+ * whatever pays back fastest (machines, upgrades, zones, rune rolls), buys altar
+ * upgrades with simple rules, collects most event rewards and unlocks
+ * achievements along the way.
  */
 import { MACHINES, MACHINE_ORDER, ZONES, ZONE_ORDER, type Cost, type MachineId, type ZoneId } from '../config/economy';
+import { EVENTS } from '../config/events';
+import { FAMILY_ORDER, RARITIES, type FamilyId } from '../config/runes';
+import { checkAchievements } from './achievements';
 import {
+  addLumen,
+  addShards,
   buyMachine,
   buyUpgrade,
   canAfford,
   canPrestige,
   canUnlockZone,
   computeRates,
-  harvest,
+  harvestEx,
   isMachineAvailable,
   nextMachineCost,
   tick,
@@ -21,7 +28,9 @@ import {
   type Rates,
 } from './economy';
 import { OBJECTIVES } from './objectives';
+import { altarUpgradeCost, autoRollAllowed, buyAltarUpgrade, bulkOf, cooldownOf, doRoll, familyUnlocked, luckOf, rarityChances, rollCostOf, runeFor } from './runes';
 import { createInitialState, type GameState } from './state';
+import { mulberry32 } from '../core/noise';
 
 export interface SimEvent {
   t: number;
@@ -36,10 +45,12 @@ export interface SimResult {
   /** Longest wait between two purchases, during the first `earlyWindow` seconds. */
   maxEarlyGap: number;
   maxEarlyGapAt: number;
-  /** Longest wait between two purchases over the whole run. */
   maxGap: number;
   maxGapAt: number;
   purchases: number;
+  rolls: number;
+  /** Share of production coming from rune + achievement bonuses at the end. */
+  bonusProd: number;
   final: GameState;
 }
 
@@ -51,70 +62,83 @@ export interface SimOptions {
   earlyWindow?: number;
   dt?: number;
   startState?: GameState;
+  /** Disable runes (to measure their impact). */
+  noRunes?: boolean;
+  /** Share of event rewards the player actually grabs. */
+  eventCatch?: number;
+  seed?: number;
 }
 
 type Candidate =
   | { kind: 'machine'; id: MachineId; cost: Cost }
   | { kind: 'upgrade'; id: string; cost: Cost }
-  | { kind: 'zone'; id: ZoneId; cost: Cost };
+  | { kind: 'zone'; id: ZoneId; cost: Cost }
+  | { kind: 'roll'; id: FamilyId; cost: Cost };
 
 /** How many shards one lumen is "worth" to the bot when comparing options. */
 function lumenValue(state: GameState): number {
-  // Lumen is scarce and gates zones: value it highly once refineries exist.
   return state.zones.forge ? 25 : 0;
 }
 
-function score(r: Rates, lv: number): number {
-  return r.shards + r.lumen * lv;
+function score(r: Rates, lv: number, clickRate: number): number {
+  return r.shards + r.lumen * lv + r.click * (1 + r.critChance * 4) * clickRate * Math.min(1.6, r.strikeSpeed);
 }
 
 function costInShards(c: Cost, lv: number): number {
   return (c.shards ?? 0) + (c.lumen ?? 0) * Math.max(lv, 25);
 }
 
-function candidates(state: GameState): Candidate[] {
-  const out: Candidate[] = [];
-  for (const id of MACHINE_ORDER) if (isMachineAvailable(state, id)) out.push({ kind: 'machine', id, cost: nextMachineCost(state, id) });
-  for (const u of visibleUpgrades(state)) out.push({ kind: 'upgrade', id: u.id, cost: u.cost });
-  for (const z of ZONE_ORDER) if (canUnlockZone(state, z)) out.push({ kind: 'zone', id: z, cost: ZONES[z].cost });
-  return out;
-}
-
-function apply(state: GameState, c: Candidate): boolean {
-  if (c.kind === 'machine') return buyMachine(state, c.id);
-  if (c.kind === 'upgrade') return buyUpgrade(state, c.id);
-  return unlockZone(state, c.id);
-}
-
 function clone(s: GameState): GameState {
   return JSON.parse(JSON.stringify(s));
 }
 
-/** Pick the candidate that minimises (time to afford + payback time). */
-function choose(state: GameState, clickRate: number): Candidate | null {
+function candidates(state: GameState, noRunes: boolean, rollReady: boolean): Candidate[] {
+  const out: Candidate[] = [];
+  for (const id of MACHINE_ORDER) if (isMachineAvailable(state, id)) out.push({ kind: 'machine', id, cost: nextMachineCost(state, id) });
+  for (const u of visibleUpgrades(state)) out.push({ kind: 'upgrade', id: u.id, cost: u.cost });
+  for (const z of ZONE_ORDER) if (canUnlockZone(state, z)) out.push({ kind: 'zone', id: z, cost: ZONES[z].cost });
+  if (!noRunes && rollReady) for (const f of FAMILY_ORDER) if (familyUnlocked(state, f)) out.push({ kind: 'roll', id: f, cost: rollCostOf(state, f) });
+  return out;
+}
+
+/** State after the candidate, for valuation. Rune rolls add their expected copies. */
+function preview(state: GameState, c: Candidate): GameState {
+  const s2 = clone(state);
+  s2.shards = 1e300;
+  s2.lumen = 1e300;
+  if (c.kind === 'machine') buyMachine(s2, c.id);
+  else if (c.kind === 'upgrade') buyUpgrade(s2, c.id);
+  else if (c.kind === 'zone') unlockZone(s2, c.id);
+  else {
+    const p = rarityChances(luckOf(state));
+    const bulk = bulkOf(state);
+    RARITIES.forEach((r, i) => {
+      const def = runeFor(c.id, r.id);
+      s2.runes[def.id] = (s2.runes[def.id] ?? 0) + bulk * p[i];
+    });
+  }
+  return s2;
+}
+
+function choose(state: GameState, clickRate: number, noRunes: boolean, rollReady: boolean): Candidate | null {
   const rates = computeRates(state);
   const lv = lumenValue(state);
-  const base = score(rates, lv) + rates.click * clickRate;
+  const base = score(rates, lv, clickRate);
   let best: Candidate | null = null;
   let bestT = Infinity;
-  for (const c of candidates(state)) {
-    // Effective income including clicks, to estimate the wait.
-    const eff: Rates = { ...rates, shards: rates.shards + rates.click * clickRate };
+  const eff: Rates = { ...rates, shards: rates.shards + rates.click * clickRate };
+  for (const c of candidates(state, noRunes, rollReady)) {
     const wait = timeToAfford(state, eff, c.cost);
     if (!isFinite(wait)) continue;
     let t: number;
     if (c.kind === 'zone') {
-      // Zones gate content: buy them as soon as reasonable.
       t = wait < 120 ? wait : Infinity;
     } else {
-      const s2 = clone(state);
-      s2.shards = 1e300;
-      s2.lumen = 1e300;
-      apply(s2, c);
-      const r2 = computeRates(s2);
-      const gain = score(r2, lv) + r2.click * clickRate - base;
+      const gain = score(computeRates(preview(state, c)), lv, clickRate) - base;
       if (gain <= 0) continue;
       t = wait + costInShards(c.cost, lv) / gain;
+      // A roll only happens once per cooldown: never wait for one.
+      if (c.kind === 'roll' && wait > 0) continue;
     }
     if (t < bestT) {
       bestT = t;
@@ -124,12 +148,35 @@ function choose(state: GameState, clickRate: number): Candidate | null {
   return best;
 }
 
+/** Simple rules for altar upgrades: buy when cheap compared to income. */
+function buyAltar(state: GameState, income: number): string | null {
+  if (!state.altar.auto && state.zones.forge && canAfford(state, altarUpgradeCost(state, 'auto')!)) {
+    buyAltarUpgrade(state, 'auto');
+    return 'auto';
+  }
+  if (state.runeStats.rolls < 10) return null;
+  for (const id of ['bulk', 'luck', 'speed'] as const) {
+    const c = altarUpgradeCost(state, id);
+    if (!c) continue;
+    if ((c.shards ?? 0) <= income * 60 && canAfford(state, c)) {
+      buyAltarUpgrade(state, id);
+      return id;
+    }
+  }
+  return null;
+}
+
+
+
 export function simulateRun(opts: SimOptions = {}): SimResult {
   const cps = opts.clicksPerSecond ?? 3;
   const clickUntil = opts.clickUntil ?? Infinity;
   const maxSeconds = opts.maxSeconds ?? 3 * 3600;
   const earlyWindow = opts.earlyWindow ?? 600;
   const dt = opts.dt ?? 0.25;
+  const noRunes = !!opts.noRunes;
+  const catchRate = opts.eventCatch ?? 0.75;
+  const rng = mulberry32(opts.seed ?? 7);
   const state = opts.startState ? clone(opts.startState) : createInitialState(0);
 
   const events: SimEvent[] = [];
@@ -143,21 +190,63 @@ export function simulateRun(opts: SimOptions = {}): SimResult {
   let maxGapAt = 0;
   let purchases = 0;
   let clickAcc = 0;
-  let objective = 0;
+  let objective = state.objective;
+  let rollTimer = 0;
+  let nextMeteor = (EVENTS.meteor.first[0] + EVENTS.meteor.first[1]) / 2;
+  let nextGolden = (EVENTS.golden.first[0] + EVENTS.golden.first[1]) / 2;
+  let rolls = 0;
+
+  const note = (t: number, what: string) => {
+    events.push({ t, what });
+    const gap = t - lastBuy;
+    if (t <= earlyWindow && gap > maxEarlyGap) {
+      maxEarlyGap = gap;
+      maxEarlyGapAt = t;
+    }
+    if (gap > maxGap) {
+      maxGap = gap;
+      maxGapAt = t;
+    }
+    lastBuy = t;
+    purchases++;
+  };
 
   let t = 0;
   let target: Candidate | null = null;
+  let tickN = 0;
   while (t < maxSeconds) {
     const rates = computeRates(state);
     tick(state, dt, rates);
-    if (t < clickUntil) {
-      clickAcc += cps * dt;
+    const clicking = t < clickUntil;
+    if (clicking) {
+      clickAcc += cps * Math.min(1.6, rates.strikeSpeed) * dt;
       while (clickAcc >= 1) {
-        harvest(state, rates);
+        harvestEx(state, rates, rng);
         clickAcc -= 1;
       }
     }
     t += dt;
+    tickN++;
+    rollTimer -= dt;
+
+    // Random events (expected rewards, the player grabs most of them).
+    nextMeteor -= dt;
+    nextGolden -= dt;
+    if (nextMeteor <= 0) {
+      nextMeteor = (EVENTS.meteor.every[0] + EVENTS.meteor.every[1]) / 2;
+      const zones = Object.values(state.zones).filter(Boolean).length;
+      const n = Math.round((EVENTS.meteor.count + zones * EVENTS.meteor.perZone) * catchRate);
+      addShards(state, n * Math.max(10, rates.shards * EVENTS.meteor.rewardSeconds + rates.click * EVENTS.meteor.rewardClicks));
+      state.counters.meteors += n;
+    }
+    if (nextGolden <= 0 && state.stats.harvests >= 10) {
+      nextGolden = (EVENTS.golden.every[0] + EVENTS.golden.every[1]) / 2;
+      if (clicking && rng() < catchRate) {
+        addShards(state, Math.max(100, rates.shards * EVENTS.golden.rewardSeconds + rates.click * 40) + EVENTS.golden.hits * rates.click * EVENTS.golden.hitClicks);
+        addLumen(state, rates.lumen * EVENTS.golden.rewardSeconds * 0.5);
+        state.counters.golden++;
+      }
+    }
 
     // Tutorial rewards (the bot "walks" instantly).
     state.flags.nearCrystal = true;
@@ -169,34 +258,55 @@ export function simulateRun(opts: SimOptions = {}): SimResult {
       if (o.reward?.lumen) state.lumen += o.reward.lumen;
       objective++;
     }
+    state.objective = objective;
 
-    // Re-evaluate the target every second or after buying.
-    if (!target || Math.floor(t / dt) % Math.round(1 / dt) === 0) target = choose(state, t < clickUntil ? cps : 0);
+    const everySecond = tickN % Math.round(1 / dt) === 0;
+    if (everySecond) {
+      checkAchievements(state);
+      if (!noRunes) {
+        const a = buyAltar(state, rates.shards + rates.click * cps);
+        if (a) note(t, `Autel : ${a}`);
+      }
+    }
+    // Auto-roll (when unlocked): the best family, with the reserve rule.
+    if (!noRunes && state.altar.auto && rollTimer <= 0) {
+      const fam = [...FAMILY_ORDER].reverse().find((f) => familyUnlocked(state, f) && autoRollAllowed(state, f, rates));
+      if (fam && doRoll(state, fam, rng).length) {
+        rolls++;
+        rollTimer = cooldownOf(state);
+      }
+    }
+
+    if (!target || everySecond) target = choose(state, clicking ? cps : 0, noRunes, rollTimer <= 0);
     let bought = 0;
     while (target && canAfford(state, target.cost) && bought < 50) {
-      if (!apply(state, target)) break;
+      let ok = false;
+      if (target.kind === 'machine') ok = buyMachine(state, target.id);
+      else if (target.kind === 'upgrade') ok = buyUpgrade(state, target.id);
+      else if (target.kind === 'zone') ok = unlockZone(state, target.id);
+      else if (rollTimer <= 0) {
+        ok = doRoll(state, target.id, rng).length > 0;
+        if (ok) {
+          rolls++;
+          rollTimer = cooldownOf(state);
+        }
+      }
+      if (!ok) break;
       bought++;
-      purchases++;
       const label =
         target.kind === 'machine'
           ? `${MACHINES[target.id].name} #${state.machines[target.id]}`
           : target.kind === 'zone'
             ? `ZONE ${ZONES[target.id].name}`
-            : `Amélioration ${target.id}`;
-      events.push({ t, what: label });
+            : target.kind === 'roll'
+              ? `Tirage ${target.id}`
+              : `Amélioration ${target.id}`;
+      // Rune rolls are not "purchases" for the pacing metric (they are always available).
+      if (target.kind === 'roll') events.push({ t, what: label });
+      else note(t, label);
       if (target.kind === 'zone') zoneTimes[target.id] = t;
       if (target.kind === 'machine' && firstMachineTimes[target.id] === undefined) firstMachineTimes[target.id] = t;
-      const gap = t - lastBuy;
-      if (t <= earlyWindow && gap > maxEarlyGap) {
-        maxEarlyGap = gap;
-        maxEarlyGapAt = t;
-      }
-      if (gap > maxGap) {
-        maxGap = gap;
-        maxGapAt = t;
-      }
-      lastBuy = t;
-      target = choose(state, t < clickUntil ? cps : 0);
+      target = choose(state, clicking ? cps : 0, noRunes, rollTimer <= 0);
     }
 
     if (prestigeReadyAt === null && canPrestige(state)) {
@@ -206,5 +316,19 @@ export function simulateRun(opts: SimOptions = {}): SimResult {
     }
   }
 
-  return { events, zoneTimes, firstMachineTimes, prestigeReadyAt, maxEarlyGap, maxEarlyGapAt, maxGap, maxGapAt, purchases, final: state };
+  const fr = computeRates(state);
+  return {
+    events,
+    zoneTimes,
+    firstMachineTimes,
+    prestigeReadyAt,
+    maxEarlyGap,
+    maxEarlyGapAt,
+    maxGap,
+    maxGapAt,
+    purchases,
+    rolls,
+    bonusProd: fr.bonus.prod,
+    final: state,
+  };
 }

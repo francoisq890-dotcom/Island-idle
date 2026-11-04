@@ -135,10 +135,10 @@ export const UPGRADES: UpgradeDef[] = [
   // --- Manual harvest -------------------------------------------------------
   { id: 'pick1', name: 'Pioche renforcée', icon: 'pick', desc: 'Chaque coup de pioche rapporte 2× plus.', cost: { shards: 20 }, effects: [{ type: 'click', mult: 2 }] },
   { id: 'pick2', name: 'Pioche de quartz', icon: 'pick', desc: 'Chaque coup de pioche rapporte 2× plus.', cost: { shards: 350 }, effects: [{ type: 'click', mult: 2 }], requires: { machine: ['drill', 5] } },
-  { id: 'pick3', name: 'Pioche résonante', icon: 'pick', desc: 'Chaque coup rapporte en plus 5 % de ta production par seconde.', cost: { shards: 2500 }, effects: [{ type: 'clickPct', pct: 0.05 }], requires: { machine: ['excavator', 5] } },
-  { id: 'pick4', name: "Pioche d'étoile", icon: 'pick', desc: 'Coups ×3 et +5 % supplémentaires de ta production par seconde.', cost: { shards: 60000, lumen: 60 }, effects: [{ type: 'click', mult: 3 }, { type: 'clickPct', pct: 0.05 }], requires: { zone: 'geyser' } },
-  { id: 'pick5', name: 'Pioche des marées', icon: 'pick', desc: 'Coups ×3 et +5 % de ta production par seconde. Lame d’obsidienne d’éther.', cost: { shards: 2.5e6, lumen: 2500 }, effects: [{ type: 'click', mult: 3 }, { type: 'clickPct', pct: 0.05 }], requires: { zone: 'sky' } },
-  { id: 'pick6', name: 'Pioche de l’Aube', icon: 'pick', desc: 'Coups ×5 et +10 % de ta production par seconde. La pioche des légendes.', cost: { shards: 1.2e8, lumen: 40000 }, effects: [{ type: 'click', mult: 5 }, { type: 'clickPct', pct: 0.1 }], requires: { machine: ['prism', 8] } },
+  { id: 'pick3', name: 'Pioche résonante', icon: 'pick', desc: 'Chaque coup rapporte en plus 3 % de ta production par seconde.', cost: { shards: 2500 }, effects: [{ type: 'clickPct', pct: 0.03 }], requires: { machine: ['excavator', 5] } },
+  { id: 'pick4', name: "Pioche d'étoile", icon: 'pick', desc: 'Coups ×3 et +3 % supplémentaires de ta production par seconde.', cost: { shards: 60000, lumen: 60 }, effects: [{ type: 'click', mult: 3 }, { type: 'clickPct', pct: 0.03 }], requires: { zone: 'geyser' } },
+  { id: 'pick5', name: 'Pioche des marées', icon: 'pick', desc: 'Coups ×3 et +3 % de ta production par seconde. Lame d’obsidienne d’éther.', cost: { shards: 2.5e6, lumen: 2500 }, effects: [{ type: 'click', mult: 3 }, { type: 'clickPct', pct: 0.03 }], requires: { zone: 'sky' } },
+  { id: 'pick6', name: 'Pioche de l’Aube', icon: 'pick', desc: 'Coups ×5 et +5 % de ta production par seconde. La pioche des légendes.', cost: { shards: 1.2e8, lumen: 40000 }, effects: [{ type: 'click', mult: 5 }, { type: 'clickPct', pct: 0.05 }], requires: { machine: ['prism', 8] } },
 
   // --- Drills ---------------------------------------------------------------
   { id: 'drill1', name: 'Mèches trempées', icon: 'drill', desc: 'Les foreuses produisent 2× plus.', cost: { shards: 100 }, effects: [{ type: 'machine', machine: 'drill', mult: 2 }], requires: { machine: ['drill', 3] } },
@@ -214,11 +214,13 @@ export const ZONE_ORDER: ZoneId[] = ['home', 'forge', 'geyser', 'sky'];
 /** Prestige: "faire descendre l'île". */
 export const PRESTIGE = {
   /** Total shards harvested during the current island needed before the Lighthouse wakes up. */
-  unlockAt: 4e8,
+  unlockAt: 8e9,
+  /** The Lighthouse asks for this many times more after each descent. */
+  growth: 8,
   /** Star seeds = floor(sqrt(runShards / divisor)). */
-  divisor: 1e7,
+  divisor: 3e7,
   /** Each star seed gives this much bonus production (additive). */
-  bonusPerSeed: 0.1,
+  bonusPerSeed: 0.05,
 };
 
 /** Offline production. */
@@ -231,7 +233,13 @@ export const OFFLINE = {
   minSecondsForReport: 60,
 };
 
-export function seedsForRun(runShards: number): number {
-  if (runShards < PRESTIGE.unlockAt) return 0;
-  return Math.floor(Math.sqrt(runShards / PRESTIGE.divisor));
+/** Shards the island must produce before the Lighthouse wakes up (grows with each prestige). */
+export function prestigeThreshold(prestiges: number): number {
+  return PRESTIGE.unlockAt * Math.pow(PRESTIGE.growth, prestiges);
+}
+
+/** Star seeds for a run: √(shards / divisor), the divisor following the threshold so later islands stay rewarding. */
+export function seedsForRun(runShards: number, prestiges = 0): number {
+  if (runShards < prestigeThreshold(prestiges)) return 0;
+  return Math.floor(Math.sqrt(runShards / (PRESTIGE.divisor * Math.pow(PRESTIGE.growth, prestiges * 0.5))));
 }

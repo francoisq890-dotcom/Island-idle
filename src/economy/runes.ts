@@ -106,14 +106,37 @@ function affordable(state: GameState, c: Cost): boolean {
   return (c.shards ?? 0) <= state.shards + 1e-9 && (c.lumen ?? 0) <= state.lumen + 1e-9;
 }
 
+/** Price of the next roll at this family's altar (grows with each roll on this island). */
+export function rollCostOf(state: GameState, family: FamilyId): Cost {
+  const base = FAMILIES[family].rollCost;
+  const f = Math.pow(ROLL.costGrowth, state.familyRolls[family] ?? 0);
+  const c: Cost = {};
+  if (base.shards) c.shards = Math.ceil(base.shards * f);
+  if (base.lumen) c.lumen = Math.ceil(base.lumen * f);
+  return c;
+}
+
+/**
+ * Auto-roll budget: one roll may cost at most 10 % of what the island earns
+ * during one cooldown, so automatic rolling never eats more than a tenth of
+ * the income (and never the savings).
+ */
+export const AUTO_SHARE = 0.1;
+export function autoRollAllowed(state: GameState, family: FamilyId, rates: { shards: number; lumen: number }): boolean {
+  const c = rollCostOf(state, family);
+  const cd = cooldownOf(state);
+  return (c.shards ?? 0) <= rates.shards * cd * AUTO_SHARE && (c.lumen ?? 0) <= rates.lumen * cd * AUTO_SHARE && canRoll(state, family);
+}
+
 export function canRoll(state: GameState, family: FamilyId): boolean {
-  return familyUnlocked(state, family) && affordable(state, FAMILIES[family].rollCost);
+  return familyUnlocked(state, family) && affordable(state, rollCostOf(state, family));
 }
 
 /** Pay once, get `bulk` runes. Returns the runes obtained (empty if impossible). */
 export function doRoll(state: GameState, family: FamilyId, rng: () => number = Math.random): RuneDef[] {
   if (!canRoll(state, family)) return [];
-  const cost = FAMILIES[family].rollCost;
+  const cost = rollCostOf(state, family);
+  state.familyRolls[family] = (state.familyRolls[family] ?? 0) + 1;
   state.shards -= cost.shards ?? 0;
   state.lumen -= cost.lumen ?? 0;
   const totals = bonusTotals(state);

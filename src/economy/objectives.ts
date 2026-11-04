@@ -3,9 +3,8 @@
  * top of the screen with a progress bar, and a world marker pointing to where
  * the player should go.
  */
-import { PRESTIGE, type MachineId, type ZoneId } from '../config/economy';
+import { prestigeThreshold, type MachineId, type ZoneId } from '../config/economy';
 import type { Rates } from './economy';
-import { formatNumber } from './format';
 import type { GameState } from './state';
 
 /** Where the world beacon should point. */
@@ -160,10 +159,10 @@ export const OBJECTIVES: Objective[] = [
   },
   {
     id: 'wake',
-    text: `Éveille le Phare : récolte ${formatNumber(PRESTIGE.unlockAt)} éclats sur cette île`,
+    text: 'Éveille le Phare : récolte assez d’éclats sur cette île',
     hint: 'Compte tout ce que tu as récolté depuis que l’île est née',
     target: { kind: 'lighthouse' },
-    progress: (s) => [Math.min(s.stats.runShards, PRESTIGE.unlockAt), PRESTIGE.unlockAt],
+    progress: (s) => [Math.min(s.stats.runShards, prestigeThreshold(s.stats.prestiges)), prestigeThreshold(s.stats.prestiges)],
   },
   {
     id: 'prestige',

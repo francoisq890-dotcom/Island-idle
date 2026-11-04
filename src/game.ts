@@ -4,7 +4,7 @@
  */
 import * as THREE from 'three';
 import { Audio } from './audio/audio';
-import { MACHINES, MILESTONES, PRESTIGE, ZONES, ZONE_ORDER, type MachineId, type ZoneId } from './config/economy';
+import { MACHINES, MILESTONES, PRESTIGE, ZONES, ZONE_ORDER, prestigeThreshold, type MachineId, type ZoneId } from './config/economy';
 import { PALETTE } from './config/palette';
 import { RANGES, SPAWN } from './config/world';
 import { Input } from './core/input';
@@ -38,7 +38,7 @@ import { MACHINE_ICON, Panels } from './ui/panels';
 import { Journal } from './ui/journal';
 import { Celebration, RunePanel, runeEffect, statText as statTextFn } from './ui/runes';
 import { FAMILIES, RARITIES, RARITY_INDEX, type FamilyId, type RuneDef } from './config/runes';
-import { buyAltarUpgrade, cooldownOf, doRoll } from './economy/runes';
+import { autoRollAllowed, buyAltarUpgrade, cooldownOf, doRoll, rollCostOf } from './economy/runes';
 import { EVENTS, between } from './config/events';
 import { hasPerk } from './config/constellations';
 import { GoldenCrystal, MeteorField } from './world/events';
@@ -263,7 +263,8 @@ export class Game {
     this.rollTimer = Math.max(0, this.rollTimer - dt);
     if (this.started && !this.busy && this.state.altar.auto && this.state.runeAuto && this.rollTimer <= 0) {
       this.rollTimer = cooldownOf(this.state);
-      this.rollRunes(this.state.runeAuto, true);
+      // Auto-roll only spends a small share of the income (never the savings).
+      if (autoRollAllowed(this.state, this.state.runeAuto, this.rates)) this.rollRunes(this.state.runeAuto, true);
     }
     this.incomeAcc += this.rates.shards * dt;
     this.lumenAcc += this.rates.lumen * dt;
@@ -810,7 +811,7 @@ export class Game {
       return { text: `Construis le ${z.bridgeName}`, hint: z.blurb, cur: Math.min(1, prog), goal: 1, label: `${costHtml(c)}${isFinite(t) && t > 0 ? ` · dans ${formatDuration(t)}` : ''}`, target: { kind: 'bridge', zone: next } };
     }
     if (!canPrestige(s)) {
-      return { text: `Éveille le Phare : ${formatNumber(PRESTIGE.unlockAt)} éclats sur cette île`, hint: 'Continue d’agrandir ta production', cur: s.stats.runShards, goal: PRESTIGE.unlockAt, label: `${formatNumber(s.stats.runShards)} / ${formatNumber(PRESTIGE.unlockAt)}`, target: { kind: 'lighthouse' } };
+      return { text: `Éveille le Phare : ${formatNumber(prestigeThreshold(s.stats.prestiges))} éclats sur cette île`, hint: 'Continue d’agrandir ta production', cur: s.stats.runShards, goal: prestigeThreshold(s.stats.prestiges), label: `${formatNumber(s.stats.runShards)} / ${formatNumber(prestigeThreshold(s.stats.prestiges))}`, target: { kind: 'lighthouse' } };
     }
     return { text: 'Le Phare est éveillé !', hint: `Fais descendre l’île pour gagner ${prestigeGain(s)} graines d’étoile (ou continue pour en gagner plus)`, cur: 1, goal: 1, label: '', target: { kind: 'lighthouse' } };
   }
@@ -968,7 +969,7 @@ export class Game {
         return `${this.keyCap()} Frapper le cristal doré <span class="cost">${this.golden.hits}/${this.golden.maxHits}</span>`;
       case 'altar': {
         const f = FAMILIES[it.family!];
-        return `${this.keyCap()} ${f.altarName} <span class="cost">${costHtml(f.rollCost, have)} / tirage</span>`;
+        return `${this.keyCap()} ${f.altarName} <span class="cost">${costHtml(rollCostOf(s, it.family!), have)} / tirage</span>`;
       }
     }
   }
@@ -1025,14 +1026,14 @@ export class Game {
         const f = FAMILIES[it.family!];
         return `<h3>${ICONS.altar} ${f.altarName}</h3>
           <p>${f.blurb} Paie l’autel pour tirer des runes : leurs bonus s’additionnent.</p>
-          <div class="kv"><span>Tirage</span><b>${costHtml(f.rollCost, have)}</b></div>
+          <div class="kv"><span>Tirage</span><b>${costHtml(rollCostOf(s, it.family!), have)}</b></div>
           <div class="foot">${act('Ouvrir l’autel')}</div>`;
       }
       case 'lighthouse': {
         const ready = canPrestige(s);
         return `<h3>${ICONS.lighthouse} Phare des étoiles</h3>
-          <p>${ready ? `Il est éveillé ! Il peut faire descendre l’île contre <b>${prestigeGain(s)} graines d’étoile</b>.` : `Il dort. Récolte ${formatNumber(PRESTIGE.unlockAt)} éclats sur cette île pour l’éveiller.`}</p>
-          ${ready ? '' : `<div class="ms"><i style="width:${Math.min(100, (s.stats.runShards / PRESTIGE.unlockAt) * 100)}%"></i></div>`}
+          <p>${ready ? `Il est éveillé ! Il peut faire descendre l’île contre <b>${prestigeGain(s)} graines d’étoile</b>.` : `Il dort. Récolte ${formatNumber(prestigeThreshold(s.stats.prestiges))} éclats sur cette île pour l’éveiller.`}</p>
+          ${ready ? '' : `<div class="ms"><i style="width:${Math.min(100, (s.stats.runShards / prestigeThreshold(s.stats.prestiges)) * 100)}%"></i></div>`}
           <div class="foot">${act('Parler au Phare')}</div>`;
       }
     }

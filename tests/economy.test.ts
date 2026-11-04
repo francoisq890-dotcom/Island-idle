@@ -114,7 +114,8 @@ describe('prestige', () => {
     // The "La Foreuse" constellation (5 lifetime seeds) gives 5 starting drills.
     expect(s.machines.drill).toBe(gain >= 5 ? 5 : 0);
     expect(s.upgrades).toEqual({});
-    expect(s.zones.forge).toBe(false);
+    // The "Le Pont" constellation (15 lifetime seeds) keeps the Forge bridge.
+    expect(s.zones.forge).toBe(gain >= 15);
     expect(s.settings.muted).toBe(true);
     expect(s.stats.prestiges).toBe(1);
     // Seeds boost production

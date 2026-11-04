@@ -201,3 +201,103 @@ Palette restreinte (`src/config/palette.ts`) : ciel lavande → pêche, herbes v
 - À la fermeture, le panneau se replie vite (180 ms).
 - Sons synthétisés : papier qui se déplie avec un déclic de laiton, page qui tourne pour les onglets, petit tic de bois au survol, pièces au paiement.
 - Le bouton d'achat est un *sceau de laiton* : il se soulève au survol avec un reflet qui balaie la surface, s'enfonce à la pression, puis tamponne la ligne (« ✓ » à l'encre) quand l'achat réussit. S'il est trop cher, il devient une simple gravure en creux avec une jauge qui se remplit.
+
+## 4. Système de runes
+
+**Recherches.** Sources : guides et wikis de fans d'*Ascender/Ascension Incremental*, *Noob Incremental*, *Luck Incremental*, et pages de codes. Mécaniques communes retenues :
+- des **pools par zone** avec un coût par tirage ;
+- une **table de rareté fixe** dont le dernier palier est de l'ordre de 1 sur plusieurs millions ;
+- une **chance** (luck) qui pousse les tirages vers le haut ;
+- la **charge** (bulk : plusieurs runes par tirage) et la **vitesse** de tirage améliorables ;
+- un **tirage automatique** débloqué plus tard ;
+- des **doublons** qui s'additionnent, et un **index** de collection.
+
+Les noms, les effets, les visuels et les chiffres sont originaux.
+
+**Design.**
+- **4 familles**, une par île, chacune avec son **autel physique** : Pierre (production, coups), Braise (Lumen, critiques, coûts), Brume (chance, vitesse, hors-ligne), Astre (production massive, graines). On marche jusqu'à l'autel pour tirer à la main ; le tirage automatique, lui, marche de partout.
+- **7 raretés** :
+
+| Rareté | Chance de base |
+|---|---|
+| Commune | le reste |
+| Peu commune | 1/5 |
+| Rare | 1/14 |
+| Épique | 1/90 |
+| Légendaire | 1/1 200 |
+| Mythique | 1/30 000 |
+| Céleste | **1/1 000 000** |
+
+- **La chance** divise les dénominateurs (« 1 sur N » devient « L sur N »), répartis de la rareté la plus haute vers la plus basse : les probabilités restent toujours valides. Elle s'améliore par l'autel (Chance), par certaines runes, par les succès et par les graines d'étoile (+2 % chacune). Les probabilités **réelles**, chance comprise, sont affichées dans le panneau.
+- **Effets en %**, chaque doublon compte : bonus total = valeur × copies^0,6 (rendement décroissant). Plafonds :
+
+| Effet | Plafond |
+|---|---|
+| Coûts | −60 % |
+| Critique | 50 % |
+| Vitesse | +150 % |
+| Hors ligne | +200 % |
+| Graines | +100 % |
+
+- **Progression du tirage** :
+  - améliorations d'autel *Chance*, *Charge* (+1 rune par tirage, max +4), *Cadence* et *Tirage automatique* ;
+  - chaque tirage rend le suivant de cette famille 1,8 % plus cher (remis à zéro à la descente) ;
+  - **le tirage automatique n'utilise jamais plus de 10 % de la production**, pour ne jamais bloquer les achats.
+- **Retour visuel** :
+  - colonne de lumière de la couleur de la meilleure rune, onde de choc dès « rare » ;
+  - chaque tirage a son carillon, qui monte avec la rareté ;
+  - à partir de « légendaire » : **ralenti**, flash coloré, annonce plein écran avec rayons, fanfare.
+- **Prestige** : seules les runes **légendaires et plus rares** survivent. Avec la chance et la charge, les épiques deviennent fréquentes en fin d'île : les garder rendait la deuxième île triviale (mesuré : 49 s). Garder seulement les très rares donne une vraie chasse à long terme, et chaque nouvelle île redonne de la valeur aux premiers tirages. Le tirage automatique, simple confort, est conservé.
+
+## 5. Plus de gameplay
+
+- **Événements aléatoires** :
+  - *pluie de météores* (toutes les 4 à 6 min) : des éclats tombent sur l'île, on marche dessus pour les ramasser (aimant de 3,6 m) ;
+  - *cristal doré* (toutes les 5 à 9 min) : 12 coups en 25 s, sinon il s'éteint.
+
+  Les récompenses sont exprimées en *secondes de production* : elles restent utiles à tout moment de la partie. Ils obligent à bouger et à regarder l'île.
+- **Coups critiques** (×5), apportés par les runes de Braise.
+- **32 succès** à bonus permanents, consultables dans le Journal (touche J), certains secrets.
+- **4 synergies** entre machines, par exemple « Foreuses : +2 % par excavatrice ».
+- **Paliers** : chaque type de machine double à 25, 50, 100, 150… exemplaires (déjà présents, désormais aussi suivis par les succès).
+- **Objectif de long terme : les Constellations.** Les graines d'étoile gagnées au total allument des constellations qui rendent *chaque nouvelle île* plus forte :
+
+| Graines au total | Avantage |
+|---|---|
+| 5 | 5 foreuses de départ |
+| 15 | Pont des Forges déjà construit |
+| 40 | Chance d'autel au niveau 5 |
+| 100 | Production ×2 |
+| 200 | Cristaux dorés deux fois plus fréquents |
+| 350 | Deux premières pioches offertes |
+| 600 | Production ×3 |
+
+  Le Phare demande **8× plus** d'éclats après chaque descente (et donne plus de graines), pour que chaque île reste un vrai objectif.
+
+## 6. Rééquilibrage
+
+Le bot (`src/economy/simulation.ts`) :
+- tire des runes quand l'espérance de gain d'un tirage bat ses autres options ;
+- achète les améliorations d'autel et active le tirage automatique (avec la même règle des 10 %) ;
+- fait des critiques, ramasse 75 % des récompenses d'événements et débloque les succès.
+
+Premier passage après l'ajout des runes : prestige en **6 min**, +1 400 % de production via les runes, deuxième île en 49 s. Corrections, une par cause mesurée :
+- récompenses d'événements divisées par environ 5 (9 météores × 35 s de production toutes les 5 min doublaient le revenu) ;
+- exposant de cumul 0,8 → 0,6, valeurs par copie réduites, coût de tirage croissant ;
+- améliorations d'autel bien plus chères, et la Charge demande du Lumen ;
+- seules les légendaires+ survivent, le bonus de graines est plafonné ;
+- auto-tirage limité à 10 % du revenu (à 10 % de la *réserve*, il vidait le stock chaque seconde) ;
+- seuil du Phare 8e9 ; ×8 par prestige ; +5 % par graine ;
+- les pioches donnent +3 % (au lieu de +5 %) de la production par coup : l'écart entre un joueur qui clique beaucoup et les autres était trop grand.
+
+Résultats (`npm run simulate`) :
+
+| Profil | 1er prestige | Attente max. (10 premières min) |
+|---|---|---|
+| Moyen (2 coups/s pendant 10 min) | **36 min** | 40 s |
+| Paresseux (1 coup/s pendant 3 min) | **40 min** | 46 s |
+| Optimal (3 coups/s sans pause, décisions instantanées, sans marcher) | 26 min (borne basse, un humain sera plus lent) | 35 s |
+
+- Sans runes, le profil moyen met 59 min : les runes accélèrent ×1,6, elles comptent sans écraser le reste.
+- **Deuxième île** : 8 min (au lieu de 36), avec 54 graines au lieu de 32. Nettement plus rapide et plus généreuse.
+- Ces cibles sont vérifiées par `tests/balance.test.ts` et par la CI.

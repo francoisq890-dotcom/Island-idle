@@ -308,7 +308,7 @@ export function unlockZone(state: GameState, id: ZoneId): boolean {
 // ---------------------------------------------------------------------------
 
 export function prestigeGain(state: GameState): number {
-  const base = seedsForRun(state.stats.runShards);
+  const base = seedsForRun(state.stats.runShards, state.stats.prestiges);
   return base > 0 ? Math.floor(base * (1 + bonusTotals(state).seeds)) : 0;
 }
 
@@ -330,6 +330,7 @@ export function doPrestige(state: GameState): number {
   state.runes = runesAfterPrestige(state.runes);
   // Altar upgrades reset, the automatic roll (quality of life) is kept.
   state.altar = { luck: 0, bulk: 0, speed: 0, auto: state.altar.auto };
+  state.familyRolls = { stone: 0, ember: 0, mist: 0, star: 0 };
   state.shards = 0;
   state.lumen = 0;
   state.machines = emptyMachines();

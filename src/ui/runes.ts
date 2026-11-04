@@ -4,7 +4,7 @@
 import { FAMILIES, FAMILY_ORDER, RARITIES, RARITY_INDEX, ROLL, RUNES, STAT_CAP, STAT_LABEL, type FamilyId, type RuneDef, type RuneStat } from '../config/runes';
 import type { Rates } from '../economy/economy';
 import { formatDuration, formatNumber } from '../economy/format';
-import { altarLevel, altarUpgrade, altarUpgradeCost, bulkOf, cooldownOf, familyUnlocked, luckOf, oddsLabel, rarityChances, runesOf, stacked } from '../economy/runes';
+import { altarLevel, altarUpgrade, altarUpgradeCost, bulkOf, cooldownOf, familyUnlocked, luckOf, oddsLabel, rarityChances, rollCostOf, runesOf, stacked } from '../economy/runes';
 import type { GameState } from '../economy/state';
 import { ALTAR_UPGRADES } from '../config/runes';
 import { costHtml, el } from './hud';
@@ -209,23 +209,23 @@ export class RunePanel {
   private updateDraw(): void {
     const s = this.getState();
     const r = this.getRates();
-    const f = FAMILIES[this.family];
     const luck = luckOf(s, r.bonus);
     const bulk = bulkOf(s, r.bonus);
     const near = this.actions.nearAltar(this.family);
     const unlocked = familyUnlocked(s, this.family);
-    const afford = (f.rollCost.shards ?? 0) <= s.shards && (f.rollCost.lumen ?? 0) <= s.lumen;
+    const rc = rollCostOf(s, this.family);
+    const afford = (rc.shards ?? 0) <= s.shards && (rc.lumen ?? 0) <= s.lumen;
     const ok = unlocked && near && afford;
     setSeal(this.body.querySelector('.seal.roll') as HTMLElement, {
       label: bulk > 1 ? `Tirer · ${bulk} runes` : 'Tirer une rune',
-      price: costHtml(f.rollCost),
+      price: costHtml(rc),
       note: !unlocked ? 'île non atteinte' : !near ? 'approche-toi de l’autel' : !afford ? 'pas assez' : 'maintenir pour enchaîner',
       ok,
       progress: 0,
       variant: 'violet',
     });
     const hint = this.body.querySelector('.roll-hint')!;
-    const hintTxt = s.runeAuto === this.family ? 'Tirage automatique en cours ici.' : `${formatNumber(s.runeStats.rolls)} tirages · ${formatNumber(s.runeStats.runes)} runes trouvées`;
+    const hintTxt = s.runeAuto === this.family ? 'Tirage automatique ici (10 % max. de ta production).' : `${formatNumber(s.runeStats.rolls)} tirages · ${formatNumber(s.runeStats.runes)} runes trouvées`;
     if (hint.textContent !== hintTxt) hint.textContent = hintTxt;
     const autoLbl = this.body.querySelector('.auto-toggle') as HTMLElement;
     autoLbl.style.display = s.altar.auto ? '' : 'none';
@@ -281,7 +281,7 @@ export class RunePanel {
     const s = this.getState();
     const found = RUNES.filter((r) => (s.runes[r.id] ?? 0) > 0).length;
     return `
-      <p class="note">${found} / ${RUNES.length} runes trouvées. Les doublons s’additionnent (avec un rendement décroissant). Les runes <b>épiques et plus rares</b> survivent à la descente de l’île.</p>
+      <p class="note">${found} / ${RUNES.length} runes trouvées. Les doublons s’additionnent (avec un rendement décroissant). Les runes <b>légendaires et plus rares</b> survivent à la descente de l’île.</p>
       <div class="bonus-sum"></div>
       ${FAMILY_ORDER.map((f) => {
         const fam = FAMILIES[f];

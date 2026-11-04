@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FAMILIES, RARITIES, RUNES, STAT_CAP } from '../src/config/runes';
+import { FAMILIES, RARITIES, RUNES, RUNE_BY_ID, STAT_CAP } from '../src/config/runes';
 import { computeRates, doPrestige, harvestEx, nextMachineCost } from '../src/economy/economy';
 import { bulkOf, buyAltarUpgrade, cooldownOf, doRoll, luckOf, oddsLabel, rarityChances, rollRarity, runeTotals, runesAfterPrestige, stacked } from '../src/economy/runes';
 import { checkAchievements } from '../src/economy/achievements';
@@ -70,7 +70,7 @@ describe('rolling', () => {
     s.machines.drill = 10;
     const before = computeRates(s).shards;
     s.runes.st1 = 10;
-    expect(computeRates(s).shards).toBeCloseTo(before * (1 + stacked(0.01, 10)));
+    expect(computeRates(s).shards).toBeCloseTo(before * (1 + stacked(RUNE_BY_ID.get('st1')!.value, 10)));
     s.runes.em4 = 5;
     expect(nextMachineCost(s, 'drill').shards!).toBeLessThan(Math.ceil(10 * Math.pow(1.15, 10)));
   });
@@ -86,6 +86,7 @@ describe('rolling', () => {
   it('altar upgrades raise luck, bulk and speed', () => {
     const s = createInitialState(0);
     s.shards = 1e9;
+    s.lumen = 1e6;
     const l0 = luckOf(s);
     expect(buyAltarUpgrade(s, 'luck')).toBe(true);
     expect(luckOf(s)).toBeGreaterThan(l0);
@@ -99,19 +100,20 @@ describe('rolling', () => {
 });
 
 describe('runes and prestige', () => {
-  it('only epic and rarer runes survive', () => {
-    const kept = runesAfterPrestige({ st1: 50, st3: 4, st4: 2, st7: 1 });
-    expect(kept).toEqual({ st4: 2, st7: 1 });
+  it('only legendary and rarer runes survive', () => {
+    const kept = runesAfterPrestige({ st1: 50, st3: 4, st4: 2, st5: 3, st7: 1 });
+    expect(kept).toEqual({ st5: 3, st7: 1 });
   });
   it('doPrestige applies retention and keeps auto-roll', () => {
     const s = createInitialState(0);
     s.zones = { home: true, forge: true, geyser: true, sky: true };
-    s.stats.runShards = 1e9;
+    s.stats.runShards = 1e11;
     s.runes = { st1: 10, st5: 1 };
     s.altar = { luck: 5, bulk: 2, speed: 3, auto: true };
     doPrestige(s);
     expect(s.runes).toEqual({ st5: 1 });
-    expect(s.altar).toEqual({ luck: 0, bulk: 0, speed: 0, auto: true });
+    // Altar levels reset (the "Le Trèfle" constellation restarts Chance at 5), auto-roll is kept.
+    expect(s.altar).toEqual({ luck: s.lifetimeSeeds >= 40 ? 5 : 0, bulk: 0, speed: 0, auto: true });
     expect(s.lifetimeSeeds).toBe(s.seeds);
   });
 });
@@ -151,7 +153,7 @@ describe('constellations (long-term goal)', () => {
   it('perks make every new island start stronger', () => {
     const s = createInitialState(0);
     s.zones = { home: true, forge: true, geyser: true, sky: true };
-    s.stats.runShards = 1e9;
+    s.stats.runShards = 1e11;
     s.lifetimeSeeds = 50;
     doPrestige(s);
     expect(s.machines.drill).toBe(5);

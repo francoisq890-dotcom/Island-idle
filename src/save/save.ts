@@ -113,6 +113,8 @@ export function deserialize(text: string, now = Date.now()): GameState {
   s.runeAuto = FAMILY_ORDER.includes(raw.runeAuto as FamilyId) ? (raw.runeAuto as FamilyId) : null;
   const rs = obj(raw.runeStats);
   s.runeStats = { rolls: Math.floor(num(rs.rolls, 0)), runes: Math.floor(num(rs.runes, 0)), best: Math.floor(num(rs.best, -1, -1)) };
+  const fr = obj(raw.familyRolls);
+  for (const f of FAMILY_ORDER) s.familyRolls[f] = Math.floor(num(fr[f], 0));
   const ach = obj(raw.achievements);
   for (const k of Object.keys(ach)) if (ach[k] === true) s.achievements[k] = true;
   const ct = obj(raw.counters);
