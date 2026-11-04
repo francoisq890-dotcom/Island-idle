@@ -1,0 +1,24 @@
+/** Inline SVG icons (drawn for this game). */
+export const ICONS = {
+  shard: `<svg viewBox="0 0 24 24" class="ico"><path d="M12 1.5 18.5 9 12 22.5 5.5 9z" fill="#52f0ff"/><path d="M12 1.5 18.5 9H12z" fill="#b6fbff"/><path d="M5.5 9H12v13.5z" fill="#2fb7d8"/><path d="M12 9h6.5L12 22.5z" fill="#3fd3ee"/></svg>`,
+  lumen: `<svg viewBox="0 0 24 24" class="ico"><circle cx="12" cy="12" r="6.2" fill="#ffbe3b"/><circle cx="10.4" cy="10.2" r="2.3" fill="#fff0b8"/><g stroke="#ffd36e" stroke-width="2" stroke-linecap="round"><path d="M12 1.8v2.4M12 19.8v2.4M1.8 12h2.4M19.8 12h2.4M4.8 4.8l1.7 1.7M17.5 17.5l1.7 1.7M4.8 19.2l1.7-1.7M17.5 6.5l1.7-1.7"/></g></svg>`,
+  seed: `<svg viewBox="0 0 24 24" class="ico"><path d="M12 2l2.6 6.4 6.9.5-5.3 4.4 1.7 6.7L12 16.3 6.1 20l1.7-6.7L2.5 8.9l6.9-.5z" fill="#c59bff"/><path d="M12 2l2.6 6.4L12 16.3z" fill="#e3ccff"/></svg>`,
+  hammer: `<svg viewBox="0 0 24 24" class="ico"><path d="M3 20.5l9.5-9.5 1.9 1.9L5 22.4z" fill="#f3e7d4"/><path d="M11 4.5l4-2 7 7-2 4-2.2-2.2-2.6 2.6-4.4-4.4 2.6-2.6z" fill="#d2774c"/></svg>`,
+  menu: `<svg viewBox="0 0 24 24" class="ico"><g fill="#f3e7d4"><rect x="3" y="5" width="18" height="2.6" rx="1.3"/><rect x="3" y="10.7" width="18" height="2.6" rx="1.3"/><rect x="3" y="16.4" width="18" height="2.6" rx="1.3"/></g></svg>`,
+  lighthouse: `<svg viewBox="0 0 24 24" class="ico"><path d="M9 9h6l1.5 13h-9z" fill="#f1ebf7"/><path d="M8.6 13h6.8l.4 3H8.2z" fill="#b7a2e8"/><rect x="8.5" y="6" width="7" height="3" fill="#d2774c"/><path d="M12 1l4 5H8z" fill="#b7a2e8"/><circle cx="12" cy="7.5" r="1.3" fill="#fff"/></svg>`,
+  pick: `<svg viewBox="0 0 24 24" class="ico"><path d="M4 21l9-9" stroke="#a8724b" stroke-width="2.6" stroke-linecap="round"/><path d="M6 6c4-4 10-3 14 1-4-1.5-8-1.5-11 2z" fill="#8f8ca8"/><path d="M13 9l2 2" stroke="#d2774c" stroke-width="2.6"/></svg>`,
+  drill: `<svg viewBox="0 0 24 24" class="ico"><path d="M5 22l3-12h8l3 12" stroke="#d2774c" stroke-width="1.8" fill="none"/><rect x="7" y="3" width="10" height="7" rx="1.5" fill="#f3e7d4"/><path d="M10 10h4l-2 9z" fill="#8f8ca8"/><circle cx="12" cy="6.5" r="1.5" fill="#52f0ff"/></svg>`,
+  excavator: `<svg viewBox="0 0 24 24" class="ico"><rect x="3" y="15" width="18" height="5" rx="2.5" fill="#3b3552"/><rect x="5" y="8" width="11" height="7" rx="1" fill="#f3e7d4"/><rect x="7" y="9.5" width="5" height="3" fill="#ffbe3b"/><circle cx="19" cy="11" r="3" fill="#8f8ca8"/></svg>`,
+  refinery: `<svg viewBox="0 0 24 24" class="ico"><rect x="5" y="9" width="11" height="12" rx="2" fill="#f3e7d4"/><rect x="14" y="3" width="3" height="8" fill="#3b3552"/><rect x="7.5" y="13" width="6" height="4" rx="1" fill="#ffbe3b"/><path d="M5 9a5.5 4 0 0 1 11 0z" fill="#d2774c"/></svg>`,
+  geyser: `<svg viewBox="0 0 24 24" class="ico"><path d="M9 20c-1-5 1-9 0-14 2 3 4 3 6 0-1 5 1 9 0 14z" fill="#b6fbff"/><ellipse cx="12" cy="20.5" rx="8" ry="2.2" fill="#9e6d50"/><ellipse cx="12" cy="20" rx="5" ry="1.2" fill="#52f0ff"/></svg>`,
+  prism: `<svg viewBox="0 0 24 24" class="ico"><path d="M12 1.5l5 8-5 9-5-9z" fill="#fff2c4"/><path d="M12 5.5l2.2 4-2.2 4-2.2-4z" fill="#52f0ff"/><rect x="8" y="19" width="8" height="3.5" rx="1" fill="#efe7f7"/></svg>`,
+  belt: `<svg viewBox="0 0 24 24" class="ico"><rect x="2" y="12" width="20" height="6" rx="3" fill="#3b3552"/><circle cx="6" cy="15" r="1.6" fill="#d2774c"/><circle cx="12" cy="15" r="1.6" fill="#d2774c"/><circle cx="18" cy="15" r="1.6" fill="#d2774c"/><rect x="5" y="7" width="4" height="4" fill="#52f0ff"/><rect x="13" y="7" width="4" height="4" fill="#ffbe3b"/></svg>`,
+  star: `<svg viewBox="0 0 24 24" class="ico"><circle cx="12" cy="12" r="5" fill="#52f0ff"/><g stroke="#ffbe3b" stroke-width="1.6" fill="none"><ellipse cx="12" cy="12" rx="10" ry="4"/><ellipse cx="12" cy="12" rx="4" ry="10" transform="rotate(45 12 12)"/></g></svg>`,
+  bridge: `<svg viewBox="0 0 24 24" class="ico"><path d="M2 14q10-6 20 0" stroke="#76503a" stroke-width="2" fill="none"/><g fill="#a8724b"><rect x="3" y="14" width="3" height="5"/><rect x="8" y="12.4" width="3" height="5"/><rect x="13" y="12.4" width="3" height="5"/><rect x="18" y="14" width="3" height="5"/></g></svg>`,
+  sound: `<svg viewBox="0 0 24 24" class="ico"><path d="M4 9h4l5-4v14l-5-4H4z" fill="#f3e7d4"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" stroke="#f3e7d4" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>`,
+  mute: `<svg viewBox="0 0 24 24" class="ico"><path d="M4 9h4l5-4v14l-5-4H4z" fill="#f3e7d4"/><path d="M16 9l5 6M21 9l-5 6" stroke="#ff8fa3" stroke-width="2" stroke-linecap="round"/></svg>`,
+  hand: `<svg viewBox="0 0 24 24" class="ico"><path d="M12 2.5l6 7.5-6 12-6-12z" fill="#52f0ff"/></svg>`,
+  jump: `<svg viewBox="0 0 24 24" class="ico"><path d="M12 4l7 8h-4v7H9v-7H5z" fill="#f3e7d4"/></svg>`,
+};
+
+export type IconName = keyof typeof ICONS;

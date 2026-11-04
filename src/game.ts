@@ -1,0 +1,794 @@
+/**
+ * Game orchestration: main loop, input → actions, economy ↔ world ↔ UI ↔ audio,
+ * tutorial objectives, saving, offline progress and the prestige sequence.
+ */
+import * as THREE from 'three';
+import { Audio } from './audio/audio';
+import { MACHINES, MILESTONES, PRESTIGE, ZONES, ZONE_ORDER, type MachineId, type ZoneId } from './config/economy';
+import { PALETTE } from './config/palette';
+import { RANGES, SPAWN } from './config/world';
+import { Input } from './core/input';
+import { Ease, Tweens } from './core/tween';
+import {
+  buyMachine,
+  buyUpgrade,
+  canAfford,
+  canPrestige,
+  computeRates,
+  doPrestige,
+  getUpgrade,
+  harvest,
+  milestoneMult,
+  nextMachineCost,
+  nextMilestone,
+  prestigeGain,
+  tick,
+  timeToAfford,
+  unlockZone,
+  type Rates,
+} from './economy/economy';
+import { formatDuration, formatNumber, formatRate } from './economy/format';
+import { OBJECTIVES, type Objective, type ObjectiveTarget } from './economy/objectives';
+import { applyOffline, shouldShowOfflineReport, type OfflineReport } from './economy/offline';
+import { createInitialState, type GameState } from './economy/state';
+import { clearStorage, exportSave, importSave, loadFromStorage, saveToStorage } from './save/save';
+import { costHtml, Hud } from './ui/hud';
+import { ICONS } from './ui/icons';
+import { Panels } from './ui/panels';
+import { Renderer } from './world/renderer';
+import { World, type Interactable } from './world/world';
+
+const AUTOSAVE_SECONDS = 10;
+
+export class Game {
+  state: GameState;
+  private rates: Rates;
+  private dirty = true;
+  private renderer: Renderer;
+  private world: World;
+  private input: Input;
+  private tweens = new Tweens();
+  private audio = new Audio();
+  private hud: Hud;
+  private panels: Panels;
+  private lastFrame = performance.now();
+  private time = 0;
+  private saveTimer = 0;
+  private uiTimer = 0;
+  private hoverTimer = 0;
+  private hovered: Interactable | null = null;
+  private near: Interactable | null = null;
+  private started = false;
+  private busy = false; // cinematic in progress
+  private holdTimer = 0;
+  private offlineReport: OfflineReport | null = null;
+  private tmpScreen = { x: 0, y: 0, visible: false };
+  private lastObjectiveId = '';
+  private titleOrbit = 0;
+  private stepToggle = false;
+
+  constructor(private canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
+    const loaded = loadFromStorage();
+    this.state = loaded ?? createInitialState();
+    if (loaded) this.offlineReport = applyOffline(this.state);
+    this.rates = computeRates(this.state);
+
+    this.renderer = new Renderer(canvas);
+    this.renderer.setQuality(this.state.settings.quality);
+    this.world = new World(this.renderer, this.tweens, this.state);
+    this.world.player.setGlow(this.state.seeds > 0 ? PALETTE.seed : PALETTE.lumen);
+    this.input = new Input(canvas);
+
+    this.hud = new Hud(uiRoot, (x, y, z, out) => this.world.project(new THREE.Vector3(x, y, z), out));
+    this.panels = new Panels(
+      uiRoot,
+      {
+        buyMachine: (id, n) => this.buyMachine(id, n),
+        buyUpgrade: (id) => this.buyUpgrade(id),
+        unlockZone: (id) => this.unlockZone(id),
+        goTo: (kind, key) => this.goTo(kind, key),
+        prestige: () => void this.prestige(),
+        exportSave: () => exportSave(this.snapshot()),
+        importSave: (t) => this.importSave(t),
+        reset: () => this.hardReset(),
+        settingsChanged: () => this.applySettings(),
+        closed: () => this.audio.click(),
+        sound: (k) => (k === 'click' ? this.audio.click() : this.audio.hover()),
+      },
+      () => this.state,
+      () => this.rates,
+    );
+
+    this.world.hooks = {
+      onArrive: (k) => this.audio.arrive(k),
+      onStep: () => {
+        this.stepToggle = !this.stepToggle;
+        this.audio.step();
+        if (this.stepToggle) this.world.particles.smoke(this.world.player.position.clone().setY(this.world.player.position.y + 0.08), { count: 1, color: 0xf4e6d4, speed: 0.6, life: 0.45, size: 0.12, up: 0.3 });
+      },
+      onPlank: () => this.audio.plank(),
+    };
+    this.world.sync(this.state, this.rates, false);
+    this.world.conveyors.prefill();
+
+    this.bindUi();
+    this.applySettings();
+
+    window.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') this.save();
+      else if (this.started) {
+        // Credit time spent in another tab (the loop is paused by the browser).
+        const r = applyOffline(this.state);
+        this.markDirty();
+        if (shouldShowOfflineReport(r) && r.creditedSeconds > 120) this.panels.showOffline(r, () => this.audio.welcome());
+      }
+    });
+    window.addEventListener('beforeunload', () => this.save());
+
+    // Title-screen camera.
+    this.world.rig.cinematic = { pos: new THREE.Vector3(), look: new THREE.Vector3(0, 0, -8), weight: 1 };
+    this.updateTitleCamera(0);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Lifecycle
+  // ---------------------------------------------------------------------------
+
+  run(): void {
+    const loop = () => {
+      const now = performance.now();
+      const dt = Math.min(0.1, (now - this.lastFrame) / 1000);
+      this.lastFrame = now;
+      this.frame(dt);
+      requestAnimationFrame(loop);
+    };
+    requestAnimationFrame(loop);
+  }
+
+  /** Called when the player clicks "Jouer" on the title screen. */
+  start(): void {
+    if (this.started) return;
+    this.started = true;
+    this.audio.unlock();
+    this.applySettings();
+    const cin = this.world.rig.cinematic!;
+    this.tweens.add(2.2, (v) => (cin.weight = 1 - v), {
+      ease: Ease.inOutCubic,
+      done: () => {
+        this.world.rig.cinematic = null;
+        this.hud.show(true);
+        if (this.offlineReport && shouldShowOfflineReport(this.offlineReport)) {
+          this.panels.showOffline(this.offlineReport, () => this.audio.welcome());
+          this.audio.welcome();
+        }
+        this.offlineReport = null;
+      },
+    });
+    this.save();
+  }
+
+  private updateTitleCamera(dt: number): void {
+    this.titleOrbit += dt * 0.05;
+    const cin = this.world.rig.cinematic;
+    if (!cin || this.started) return;
+    const a = this.titleOrbit + 0.6;
+    cin.pos.set(Math.sin(a) * 52, 24, Math.cos(a) * 52 - 14);
+    cin.look.set(0, -2, -14);
+  }
+
+  private frame(dt: number): void {
+    this.time += dt;
+    this.tweens.update(dt);
+    this.input.update();
+    this.audio.update(dt);
+
+    if (this.dirty) {
+      this.rates = computeRates(this.state);
+      this.dirty = false;
+    }
+
+    if (!this.started) this.updateTitleCamera(dt);
+    if (this.started && !this.busy) this.handleInput(dt);
+
+    // Player & camera.
+    const move = this.started && !this.busy ? this.input.move : { x: 0, y: 0 };
+    this.world.player.update(dt, move, this.world.rig.viewYaw, this.world.ground, this.time);
+    this.world.rig.target.copy(this.world.player.position).add(new THREE.Vector3(0, 1.3, 0));
+    this.world.rig.update(dt);
+
+    // Economy.
+    tick(this.state, dt, this.rates);
+    if (this.started) this.state.flags.started = true;
+
+    // Proximity flags for objectives.
+    const p = this.world.player.position;
+    if (!this.state.flags.nearCrystal && this.world.distanceTo(this.world.interactables[0], p) < RANGES.harvest + 0.5) this.state.flags.nearCrystal = true;
+
+    this.world.update(dt, this.state);
+    this.updateUi(dt);
+    this.hud.update(dt);
+
+    this.saveTimer += dt;
+    if (this.saveTimer > AUTOSAVE_SECONDS) {
+      this.saveTimer = 0;
+      this.save();
+    }
+
+    this.renderer.render(dt);
+    this.input.endFrame();
+  }
+
+  private markDirty(): void {
+    this.dirty = true;
+    this.rates = computeRates(this.state);
+    this.dirty = false;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Input
+  // ---------------------------------------------------------------------------
+
+  private handleInput(dt: number): void {
+    const inp = this.input;
+    const panelOpen = this.panels.isOpen();
+    if (inp.pressed('Escape')) {
+      if (panelOpen) this.panels.close();
+      else this.panels.show(this.panels.menu);
+    }
+    if (inp.pressed('KeyB', 'Tab')) {
+      this.audio.click();
+      this.panels.toggleWorkshop(this.currentObjective()?.id === 'pick1' ? 'upgrades' : undefined);
+    }
+    if (inp.pressed('KeyM')) this.toggleMute();
+    if (inp.pressed('KeyP') && this.state.zones.sky) this.panels.showPrestige();
+
+    if (!inp.dragging) {
+      this.world.rig.orbit(inp.orbitDx, inp.orbitDy, this.state.settings.invertY);
+    } else this.world.rig.orbit(inp.orbitDx, inp.orbitDy, this.state.settings.invertY);
+    if (inp.zoomDelta) this.world.rig.zoom(inp.zoomDelta);
+
+    if (inp.pressed('Space')) {
+      if (this.world.player.grounded) this.audio.jump();
+      this.world.player.jump();
+    }
+
+    this.near = this.world.nearest();
+    if (inp.pressed('KeyE', 'Enter', 'KeyF')) this.interact(this.near, true);
+    // Holding the action key on the crystal keeps harvesting (3 strikes/s).
+    if (this.near?.kind === 'crystal' && inp.held('KeyE', 'KeyF')) {
+      this.holdTimer += dt;
+      if (this.holdTimer > 0.33) {
+        this.holdTimer = 0;
+        this.doHarvest();
+      }
+    } else this.holdTimer = 0;
+
+    for (const c of inp.clicks) {
+      const it = this.world.pick(c.x, c.y);
+      if (it) this.interact(it, false);
+    }
+  }
+
+  private interact(it: Interactable | null, fromKey: boolean): void {
+    if (!it) return;
+    const d = this.world.distanceTo(it, this.world.player.position);
+    switch (it.kind) {
+      case 'crystal':
+        if (d <= (fromKey ? RANGES.harvest : RANGES.harvestClick)) this.doHarvest();
+        else this.tooFar('Approche-toi du cristal pour le récolter');
+        break;
+      case 'site': {
+        if (d > it.range + (fromKey ? 0 : 1.5)) return this.tooFar('Approche-toi du chantier pour construire (ou ouvre l’Atelier)');
+        this.buyMachine(it.machine!, 1);
+        break;
+      }
+      case 'bridge':
+        if (d > it.range + (fromKey ? 0 : 1.5)) return this.tooFar('Approche-toi du panneau pour construire le pont');
+        this.unlockZone(it.zone!);
+        break;
+      case 'lighthouse':
+        this.audio.click();
+        this.panels.showPrestige();
+        break;
+    }
+  }
+
+  private tooFar(msg: string): void {
+    this.audio.error();
+    this.hud.toast('hand', msg);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Actions
+  // ---------------------------------------------------------------------------
+
+  private doHarvest(): void {
+    const v = harvest(this.state, this.rates);
+    this.world.harvestFx(v);
+    this.audio.harvest();
+    const hp = this.world.crystal.hitPoint;
+    this.hud.float(hp.x + (Math.random() - 0.5) * 0.8, hp.y + 0.6, hp.z + (Math.random() - 0.5) * 0.8, `+${formatNumber(v, 1)}${ICONS.shard}`, v >= 100 ? 'big' : '');
+  }
+
+  buyMachine(id: MachineId, n: number): void {
+    let bought = 0;
+    const before = this.state.machines[id];
+    for (let i = 0; i < n; i++) {
+      if (!buyMachine(this.state, id)) break;
+      bought++;
+    }
+    if (bought === 0) {
+      this.audio.error();
+      const cost = nextMachineCost(this.state, id);
+      const missing = (cost.lumen ?? 0) > this.state.lumen ? 'Lumen' : 'éclats';
+      const pos = this.world.sites[id].slotPosition(this.world.sites[id].nextGhostIndex >= 0 ? this.world.sites[id].nextGhostIndex : 0);
+      this.hud.float(pos.x, pos.y + 2.5, pos.z, `Pas assez de ${missing}`, 'text small', 1.2);
+      return;
+    }
+    this.markDirty();
+    const { spawned } = this.world.sync(this.state, this.rates, true);
+    spawned.slice(-3).forEach((s) => this.world.spawnFx(s.machine, s.index));
+    this.audio.build();
+    const after = this.state.machines[id];
+    const site = this.world.sites[id];
+    const last = site.slotPosition(Math.min(after, site.slots.length) - 1);
+    this.hud.float(last.x, last.y + MODEL_H(site.model.height), last.z, `+${bought} ${bought > 1 ? MACHINES[id].plural : MACHINES[id].name}`, 'text', 1.4);
+    // Milestones crossed?
+    for (const m of MILESTONES) {
+      if (before < m && after >= m) {
+        this.audio.milestone();
+        this.hud.toast(MACHINE_ICON[id], `Palier ${m} atteint !`, `${MACHINES[id].plural} : production ×2 (total ×${milestoneMult(after)})`, 'gold');
+        const c = site.slotPosition(0);
+        this.world.particles.sparks(c.clone().setY(c.y + 2), { count: 60, color: PALETTE.lumen, speed: 8, life: 1.2, size: 0.12, up: 4 });
+        this.world.rig.shake(0.5);
+      }
+    }
+    this.checkObjectives();
+    this.panels.refresh();
+  }
+
+  buyUpgrade(id: string): void {
+    if (!buyUpgrade(this.state, id)) {
+      this.audio.error();
+      return;
+    }
+    const up = getUpgrade(id)!;
+    this.markDirty();
+    this.world.sync(this.state, this.rates, true);
+    this.audio.upgrade();
+    this.hud.toast(up.icon, up.name, up.desc, 'gold');
+    const p = this.world.player.position;
+    this.world.particles.sparks(p.clone().setY(p.y + 1.2), { count: 30, color: PALETTE.lumen, speed: 5, life: 0.9, size: 0.08, up: 3 });
+    this.checkObjectives();
+    this.panels.refresh();
+  }
+
+  unlockZone(id: ZoneId): void {
+    if (!unlockZone(this.state, id)) {
+      this.audio.error();
+      const b = this.world.bridges.get(id)!;
+      const sg = b.layout.sign;
+      this.hud.float(sg[0], 3, sg[1], 'Pas assez de ressources', 'text small', 1.2);
+      return;
+    }
+    this.markDirty();
+    this.panels.close();
+    this.world.sync(this.state, this.rates, true);
+    this.audio.build();
+    this.hud.toast('bridge', `${ZONES[id].bridgeName} en construction…`, `Il mène à l’${ZONES[id].name}`, 'gold');
+    // Short cinematic on the bridge being built.
+    const br = this.world.bridges.get(id)!;
+    const mid = br.midpoint;
+    const dir = new THREE.Vector3(br.layout.to[0] - br.layout.from[0], 0, br.layout.to[1] - br.layout.from[1]).normalize();
+    const side = new THREE.Vector3(-dir.z, 0, dir.x);
+    const camPos = mid.clone().addScaledVector(side, 14).add(new THREE.Vector3(0, 7, 0)).addScaledVector(dir, -4);
+    this.cinematic(camPos, mid, 3.2).then(() => {
+      this.audio.bridgeDone();
+      this.hud.toast('bridge', `${ZONES[id].name} accessible !`, ZONES[id].blurb, 'gold');
+      this.checkObjectives();
+    });
+    this.checkObjectives();
+  }
+
+  private async cinematic(pos: THREE.Vector3, look: THREE.Vector3, hold: number): Promise<void> {
+    this.busy = true;
+    const rig = this.world.rig;
+    rig.cinematic = { pos, look, weight: 0 };
+    const c = rig.cinematic;
+    await new Promise<void>((r) => this.tweens.add(1.0, (v) => (c.weight = v), { ease: Ease.inOutCubic, done: r }));
+    await this.tweens.wait(hold);
+    await new Promise<void>((r) => this.tweens.add(1.0, (v) => (c.weight = 1 - v), { ease: Ease.inOutCubic, done: r }));
+    rig.cinematic = null;
+    this.busy = false;
+  }
+
+  private goTo(kind: 'site' | 'bridge', key: string): void {
+    this.panels.close();
+    this.forcedTarget = { kind, key, until: this.time + 25 };
+    const name = kind === 'site' ? MACHINES[key as MachineId].name : ZONES[key as ZoneId].bridgeName;
+    this.hud.toast('hand', `Suis la balise jusqu’au chantier`, kind === 'site' ? `Pose ta première ${name.toLowerCase()} sur place` : name);
+  }
+  private forcedTarget: { kind: 'site' | 'bridge'; key: string; until: number } | null = null;
+
+  private async prestige(): Promise<void> {
+    if (!canPrestige(this.state) || this.busy) return;
+    this.busy = true;
+    this.panels.close();
+    this.hud.show(false);
+    const gain = prestigeGain(this.state);
+    const rig = this.world.rig;
+    const look = new THREE.Vector3(0, 0, -14);
+    rig.cinematic = { pos: new THREE.Vector3(48, 30, 30), look, weight: 0 };
+    const c = rig.cinematic;
+    await new Promise<void>((r) => this.tweens.add(1.6, (v) => (c.weight = v), { ease: Ease.inOutCubic, done: r }));
+    this.audio.prestige();
+    this.world.lighthouse.setAwake(true);
+    this.renderer.setFlashColor(PALETTE.seed);
+    this.world.particles.sparks(this.world.lighthouse.topPosition, { count: 120, color: PALETTE.seed, speed: 12, life: 2, size: 0.18, up: 4, gravity: 2 });
+    this.world.player.root.visible = false;
+    const descend = this.world.descend();
+    this.tweens.add(2.6, (v) => (this.renderer.flash = Math.pow(v, 3) * 0.85), { ease: Ease.linear });
+    await descend;
+
+    doPrestige(this.state);
+    this.markDirty();
+    this.world.regrow(this.state.islandSeed);
+    this.world.resetForNewIsland(this.state);
+    this.world.player.teleport(SPAWN.x, SPAWN.z, SPAWN.yaw, this.world.ground);
+    this.world.player.setGlow(PALETTE.seed);
+    rig.yaw = SPAWN.yaw;
+    rig.pitch = 0.5;
+    const rise = this.world.rise();
+    this.tweens.add(1.6, (v) => (this.renderer.flash = 0.85 * (1 - v)), { ease: Ease.outCubic });
+    await rise;
+    this.world.player.root.visible = true;
+    this.world.particles.sparks(this.world.player.position.clone().setY(1), { count: 80, color: PALETTE.seed, speed: 7, life: 1.4, size: 0.12, up: 4 });
+    rig.target.copy(this.world.player.position).add(new THREE.Vector3(0, 1.3, 0));
+    await new Promise<void>((r) => this.tweens.add(1.6, (v) => (c.weight = 1 - v), { ease: Ease.inOutCubic, done: r }));
+    rig.cinematic = null;
+    this.busy = false;
+    this.hud.show(true);
+    this.audio.welcome();
+    this.hud.toast('seed', `+${gain} Graine${gain > 1 ? 's' : ''} d’étoile`, `Une nouvelle île est née. Production +${Math.round(this.state.seeds * PRESTIGE.bonusPerSeed * 100)} % pour toujours.`, 'violet');
+    this.save();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Objectives
+  // ---------------------------------------------------------------------------
+
+  private currentObjective(): Objective | null {
+    return OBJECTIVES[this.state.objective] ?? null;
+  }
+
+  private checkObjectives(): void {
+    let guard = 0;
+    while (guard++ < OBJECTIVES.length) {
+      const o = this.currentObjective();
+      if (!o) return;
+      const [c, g] = o.progress(this.state, this.rates);
+      if (c < g) return;
+      this.state.objective++;
+      if (o.reward?.shards) this.state.shards += o.reward.shards;
+      if (o.reward?.lumen) this.state.lumen += o.reward.lumen;
+      // Silent skip of objectives already done (e.g. after a prestige).
+      if (this.started) {
+        this.audio.objective();
+        this.hud.objectiveDone();
+        const reward = o.reward ? ` · récompense ${o.reward.shards ? `+${o.reward.shards} éclats` : ''}${o.reward.lumen ? `+${o.reward.lumen} lumen` : ''}` : '';
+        this.hud.toast('star', 'Objectif accompli !', o.text + reward, 'gold');
+      }
+    }
+  }
+
+  /** The goal shown at the top once the scripted tutorial is over. */
+  private dynamicGoal(): { text: string; hint: string; cur: number; goal: number; label: string; target: ObjectiveTarget } | null {
+    const s = this.state;
+    const next = ZONE_ORDER.find((z) => !s.zones[z]);
+    if (next) {
+      const z = ZONES[next];
+      const c = z.cost;
+      const prog = Math.min(c.shards ? s.shards / c.shards : 1, c.lumen ? s.lumen / c.lumen : 1);
+      const t = timeToAfford(s, this.rates, c);
+      return { text: `Construis le ${z.bridgeName}`, hint: z.blurb, cur: Math.min(1, prog), goal: 1, label: `${costHtml(c)}${isFinite(t) && t > 0 ? ` · dans ${formatDuration(t)}` : ''}`, target: { kind: 'bridge', zone: next } };
+    }
+    if (!canPrestige(s)) {
+      return { text: `Éveille le Phare : ${formatNumber(PRESTIGE.unlockAt)} éclats sur cette île`, hint: 'Continue d’agrandir ta production', cur: s.stats.runShards, goal: PRESTIGE.unlockAt, label: `${formatNumber(s.stats.runShards)} / ${formatNumber(PRESTIGE.unlockAt)}`, target: { kind: 'lighthouse' } };
+    }
+    return { text: 'Le Phare est éveillé !', hint: `Fais descendre l’île pour gagner ${prestigeGain(s)} graines d’étoile (ou continue pour en gagner plus)`, cur: 1, goal: 1, label: '', target: { kind: 'lighthouse' } };
+  }
+
+  // ---------------------------------------------------------------------------
+  // UI refresh
+  // ---------------------------------------------------------------------------
+
+  private updateUi(dt: number): void {
+    const s = this.state;
+    const r = this.rates;
+    this.hud.setResources(s.shards, r.shards, s.lumen, r.lumen, s.seeds, s.zones.forge || s.lumen > 0, s.seeds * PRESTIGE.bonusPerSeed * 100);
+
+    this.uiTimer += dt;
+    const slow = this.uiTimer > 0.2;
+    if (slow) {
+      this.uiTimer = 0;
+      this.checkObjectives();
+      this.panels.refresh();
+      const ready = canPrestige(s);
+      this.world.lighthouse.setAwake(ready);
+      this.hud.setPrestige(s.zones.sky, ready);
+    }
+
+    // Objective + beacon.
+    const o = this.currentObjective();
+    let target: ObjectiveTarget = { kind: 'none' };
+    if (o) {
+      const [c, g] = o.progress(s, r);
+      const text = this.input.isTouch && o.touchText ? o.touchText : o.text;
+      const label = g > 1 ? (g >= 1000 ? `${formatNumber(c)} / ${formatNumber(g)}` : `${Math.floor(c)} / ${g}`) : '';
+      this.hud.setObjective(text, o.hint ?? '', c, g, label);
+      target = o.target;
+      if (o.id !== this.lastObjectiveId) this.lastObjectiveId = o.id;
+    } else {
+      const d = this.dynamicGoal();
+      if (d) {
+        this.hud.setObjective(d.text, d.hint, d.cur, d.goal, d.label);
+        target = d.target;
+      } else this.hud.setObjective(null, '', 0, 1, '');
+    }
+    if (this.forcedTarget) {
+      if (this.time > this.forcedTarget.until || (this.forcedTarget.kind === 'site' && s.machines[this.forcedTarget.key as MachineId] > 0)) this.forcedTarget = null;
+      else target = this.forcedTarget.kind === 'site' ? { kind: 'site', machine: this.forcedTarget.key as MachineId } : { kind: 'bridge', zone: this.forcedTarget.key as ZoneId };
+    }
+    this.hud.setWorkshopBadge(this.panels.affordableUpgrades(), target.kind === 'ui' && !this.panels.isOpen());
+    this.updateBeacon(target);
+
+    // Prompt + tooltip.
+    if (!this.started || this.busy) {
+      this.hud.setPrompt(null);
+      this.hud.setTip(null);
+      this.hud.setCompass(null);
+      return;
+    }
+    const near = this.near;
+    this.hud.setPrompt(near ? this.promptFor(near) : null);
+    this.hud.setActionButton(!!near, near ? this.actionLabel(near) : 'Action');
+
+    this.hoverTimer -= dt;
+    if (this.hoverTimer <= 0 && !this.input.isTouch) {
+      this.hoverTimer = 0.08;
+      const pt = this.input.pointer;
+      this.hovered = pt.inside && !this.input.dragging ? this.world.pick(pt.x, pt.y) : null;
+      this.canvas.style.cursor = this.hovered ? 'pointer' : '';
+    }
+    // The crystal never gets a proximity tooltip: it would hide what you are hitting.
+    const tipFor = this.hovered ?? (near && near.kind !== 'crystal' ? near : null);
+    if (tipFor && !this.panels.isOpen()) {
+      this.world.project(tipFor.anchor, this.tmpScreen);
+      if (this.tmpScreen.visible) this.hud.setTip(this.tooltipFor(tipFor), this.tmpScreen.x, this.tmpScreen.y);
+      else this.hud.setTip(null);
+    } else this.hud.setTip(null);
+  }
+
+  private updateBeacon(target: ObjectiveTarget): void {
+    let pos: THREE.Vector3 | null = null;
+    let h = 3.2;
+    switch (target.kind) {
+      case 'crystal':
+        pos = this.world.beaconTarget('crystal');
+        h = 4.6;
+        break;
+      case 'site':
+        if (this.state.zones[MACHINES[target.machine].zone]) {
+          pos = this.world.beaconTarget('site', target.machine);
+          h = this.world.sites[target.machine].model.height + 1.2;
+        }
+        break;
+      case 'bridge':
+        pos = this.world.beaconTarget('bridge', target.zone);
+        h = 3.2;
+        break;
+      case 'lighthouse':
+        if (this.state.zones.sky) {
+          pos = this.world.beaconTarget('lighthouse');
+          h = 12;
+        }
+        break;
+    }
+    // Hide when the player is already there.
+    if (pos && Math.hypot(pos.x - this.world.player.position.x, pos.z - this.world.player.position.z) < 3.2) pos = null;
+    this.world.beacon.show(pos, h);
+    const wt = this.world.beacon.worldTarget;
+    if (wt && this.started && !this.busy) {
+      const v = wt.clone().add(new THREE.Vector3(0, 1.5, 0)).project(this.world.camera);
+      const behind = v.z > 1;
+      this.hud.setCompass({ x: (v.x * 0.5 + 0.5) * window.innerWidth, y: (-v.y * 0.5 + 0.5) * window.innerHeight, behind });
+    } else this.hud.setCompass(null);
+  }
+
+  private actionLabel(it: Interactable): string {
+    if (it.kind === 'crystal') return 'Récolter';
+    if (it.kind === 'site' || it.kind === 'bridge') return 'Construire';
+    return 'Phare';
+  }
+
+  private keyCap(): string {
+    return this.input.isTouch ? '' : '<kbd>E</kbd>';
+  }
+
+  private promptFor(it: Interactable): string {
+    const s = this.state;
+    const have = { shards: s.shards, lumen: s.lumen };
+    switch (it.kind) {
+      case 'crystal':
+        return `${this.keyCap()} Récolter <span class="cost">+${formatNumber(this.rates.click, 1)} ${ICONS.shard}</span>`;
+      case 'site': {
+        const id = it.machine!;
+        const cost = nextMachineCost(s, id);
+        return `${this.keyCap()} Construire : ${MACHINES[id].name} <span class="cost ${canAfford(s, cost) ? '' : 'no'}">${costHtml(cost, have)}</span>`;
+      }
+      case 'bridge': {
+        const z = ZONES[it.zone!];
+        return `${this.keyCap()} Construire le ${z.bridgeName} <span class="cost ${canAfford(s, z.cost) ? '' : 'no'}">${costHtml(z.cost, have)}</span>`;
+      }
+      case 'lighthouse':
+        return `${this.keyCap()} Parler au Phare`;
+    }
+  }
+
+  private tooltipFor(it: Interactable): string {
+    const s = this.state;
+    const r = this.rates;
+    const have = { shards: s.shards, lumen: s.lumen };
+    const near = this.world.distanceTo(it, this.world.player.position) < it.range;
+    const act = (verb: string) => (near ? `${this.keyCap() || 'Action'} ${verb}` : `<span style="color:var(--muted)">Approche-toi pour ${verb.toLowerCase()}</span>`);
+    switch (it.kind) {
+      case 'crystal':
+        return `<h3>${ICONS.shard} Cristal d’éther</h3>
+          <p>Frappe-le avec ta pioche pour récolter des éclats.</p>
+          <div class="row"><span>Par coup</span><b>+${formatNumber(r.click, 1)} ${ICONS.shard}</b></div>
+          <div class="foot">${near ? `${this.keyCap()} ou clic : récolter` : 'Clic : récolter (de près)'}</div>`;
+      case 'site': {
+        const id = it.machine!;
+        const def = MACHINES[id];
+        const n = s.machines[id];
+        const pm = r.perMachine[id];
+        const cost = nextMachineCost(s, id);
+        const ms = nextMilestone(n);
+        const prevMs = [...MILESTONES].reverse().find((m) => m <= n) ?? 0;
+        const rows: string[] = [];
+        if (id === 'refinery') {
+          rows.push(`<div class="row"><span>Production</span><b>+${formatRate(pm.lumen)} ${ICONS.lumen}/s</b></div>`);
+          rows.push(`<div class="row"><span>Consomme</span><b>${formatRate(pm.processed)} ${ICONS.shard}/s</b></div>`);
+          if (r.refineSupplyLimited) rows.push(`<div class="warn">Les raffineries manquent d’éclats : elles ne prennent jamais plus de 50 % de ta production. Construis des foreuses !</div>`);
+        } else {
+          rows.push(`<div class="row"><span>Production totale</span><b>+${formatRate(pm.shards)} ${ICONS.shard}/s</b></div>`);
+          if (pm.lumen > 0) rows.push(`<div class="row"><span>Lumen</span><b>+${formatRate(pm.lumen)} ${ICONS.lumen}/s</b></div>`);
+          if (n > 0) rows.push(`<div class="row"><span>Part de ton île</span><b>${Math.round(pm.share * 100)} %</b></div>`);
+        }
+        const msHtml = ms ? `<div class="row"><span>Palier ${ms} → production ×2</span><b>${n}/${ms}</b></div><div class="ms"><i style="width:${((n - prevMs) / (ms - prevMs)) * 100}%"></i></div>` : '';
+        const t = timeToAfford(s, r, cost);
+        return `<h3>${ICONS[MACHINE_ICON[id]]} ${def.name} <span class="count">${n > 0 ? '×' + n : ''}</span></h3>
+          <p>${def.blurb}</p>
+          ${rows.join('')}${msHtml}
+          <div class="foot">${act('Construire')} <span class="cost" style="margin-left:auto">${costHtml(cost, have)}</span></div>
+          ${!canAfford(s, cost) && isFinite(t) ? `<div class="row" style="margin-top:4px"><span>Disponible</span><b>dans ${formatDuration(t)}</b></div>` : ''}`;
+      }
+      case 'bridge': {
+        const z = ZONES[it.zone!];
+        const t = timeToAfford(s, r, z.cost);
+        return `<h3>${ICONS.bridge} ${z.bridgeName}</h3>
+          <p>Mène à l’<b>${z.name}</b>. ${z.blurb}</p>
+          <div class="foot">${act('Construire')} <span style="margin-left:auto">${costHtml(z.cost, have)}</span></div>
+          ${!canAfford(s, z.cost) && isFinite(t) ? `<div class="row" style="margin-top:4px"><span>Disponible</span><b>dans ${formatDuration(t)}</b></div>` : ''}`;
+      }
+      case 'lighthouse': {
+        const ready = canPrestige(s);
+        return `<h3>${ICONS.lighthouse} Phare des étoiles</h3>
+          <p>${ready ? `Il est éveillé ! Il peut faire descendre l’île contre <b>${prestigeGain(s)} graines d’étoile</b>.` : `Il dort. Récolte ${formatNumber(PRESTIGE.unlockAt)} éclats sur cette île pour l’éveiller.`}</p>
+          ${ready ? '' : `<div class="ms"><i style="width:${Math.min(100, (s.stats.runShards / PRESTIGE.unlockAt) * 100)}%"></i></div>`}
+          <div class="foot">${act('Parler au Phare')}</div>`;
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // UI wiring, settings, saving
+  // ---------------------------------------------------------------------------
+
+  private bindUi(): void {
+    this.hud.workshopBtn.addEventListener('click', () => {
+      this.audio.click();
+      this.panels.toggleWorkshop(this.currentObjective()?.id === 'pick1' ? 'upgrades' : undefined);
+    });
+    this.hud.menuBtn.addEventListener('click', () => {
+      this.audio.click();
+      this.panels.show(this.panels.menu);
+    });
+    this.hud.muteBtn.addEventListener('click', () => this.toggleMute());
+    this.hud.prestigeBtn.addEventListener('click', () => {
+      this.audio.click();
+      this.panels.showPrestige();
+    });
+    const press = (b: HTMLElement, fn: () => void) => {
+      b.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        fn();
+      });
+    };
+    let actHold: number | null = null;
+    press(this.hud.actBtn, () => {
+      if (!this.started || this.busy) return;
+      this.interact(this.near, true);
+      if (this.near?.kind === 'crystal') {
+        actHold = window.setInterval(() => {
+          if (this.near?.kind === 'crystal' && !this.busy) this.doHarvest();
+        }, 330);
+      }
+    });
+    const stopHold = () => {
+      if (actHold !== null) window.clearInterval(actHold);
+      actHold = null;
+    };
+    this.hud.actBtn.addEventListener('pointerup', stopHold);
+    this.hud.actBtn.addEventListener('pointerleave', stopHold);
+    this.hud.actBtn.addEventListener('pointercancel', stopHold);
+    press(this.hud.jumpBtn, () => {
+      if (this.world.player.grounded) this.audio.jump();
+      this.world.player.jump();
+    });
+  }
+
+  private toggleMute(): void {
+    this.state.settings.muted = !this.state.settings.muted;
+    this.applySettings();
+    if (!this.state.settings.muted) this.audio.click();
+  }
+
+  private applySettings(): void {
+    const st = this.state.settings;
+    this.audio.setVolumes(st.sfx, st.music, st.muted);
+    this.hud.setMuted(st.muted);
+    if (this.renderer.quality !== st.quality) this.renderer.setQuality(st.quality);
+  }
+
+  private snapshot(): GameState {
+    const p = this.world.player;
+    this.state.player = { x: p.position.x, z: p.position.z, yaw: this.world.rig.yaw };
+    return this.state;
+  }
+
+  save(): void {
+    if (this.busy) return;
+    saveToStorage(this.snapshot());
+  }
+
+  private importSave(text: string): string | null {
+    try {
+      const s = importSave(text);
+      saveToStorage(s);
+      window.setTimeout(() => location.reload(), 600);
+      return null;
+    } catch (e) {
+      return (e as Error).message;
+    }
+  }
+
+  private hardReset(): void {
+    clearStorage();
+    this.save = () => {};
+    location.reload();
+  }
+}
+
+const MACHINE_ICON: Record<MachineId, 'drill' | 'excavator' | 'refinery' | 'geyser' | 'prism'> = {
+  drill: 'drill',
+  excavator: 'excavator',
+  refinery: 'refinery',
+  geyser: 'geyser',
+  prism: 'prism',
+};
+
+function MODEL_H(h: number): number {
+  return h + 0.8;
+}
