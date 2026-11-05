@@ -43,7 +43,9 @@ import { EVENTS, between } from './config/events';
 import { CONSTELLATIONS, hasPerk } from './config/constellations';
 import { GoldenCrystal, MeteorField } from './world/events';
 import { addLumen, addShards } from './economy/economy';
-import { checkAchievements } from './economy/achievements';
+import { checkAchievements, type AchievementUnlock } from './economy/achievements';
+import { TIER_NAMES } from './config/achievements';
+import { achievementDesc } from './ui/journal';
 import { Renderer } from './world/renderer';
 import { World, type Interactable } from './world/world';
 
@@ -97,6 +99,9 @@ export class Game {
     const loaded = loadFromStorage();
     this.state = loaded ?? createInitialState();
     if (loaded) this.offlineReport = applyOffline(this.state);
+    if (this.offlineReport && this.offlineReport.awaySeconds > 8 * 3600) this.state.flags.sec_patient = true;
+    // Silent catch-up (e.g. right after the v3 migration): no toast storm on load.
+    checkAchievements(this.state);
     this.rates = computeRates(this.state);
 
     this.renderer = new Renderer(canvas);
@@ -220,6 +225,10 @@ export class Game {
           this.state.flags.v2Seen = true;
           this.hud.toast('altar', 'Nouveau : les autels des runes', 'Un autel t’attend sur chaque île. Tire des runes pour des bonus permanents.', 'violet');
         }
+        if (this.state.flags.migratedV3 && !this.state.flags.v3Seen) {
+          this.state.flags.v3Seen = true;
+          this.hud.toast('trophy', 'Nouveau : 62 succès à paliers', 'Bronze, argent, or : chaque palier donne un bonus permanent. Ouvre le Journal (J).', 'gold');
+        }
         if (this.offlineReport && shouldShowOfflineReport(this.offlineReport)) {
           this.panels.showOffline(this.offlineReport, () => this.audio.welcome());
           this.audio.welcome();
@@ -256,7 +265,11 @@ export class Game {
 
     // Player & camera.
     const move = this.started && !this.busy ? this.input.move : { x: 0, y: 0 };
+    this.lastPos.copy(this.world.player.position);
     this.world.player.update(dt, move, this.world.rig.viewYaw, this.world.ground, this.time);
+    const moved = Math.hypot(this.world.player.position.x - this.lastPos.x, this.world.player.position.z - this.lastPos.z);
+    if (moved < 2) this.state.counters.distance += moved;
+    this.stillTime = moved > 0.001 ? 0 : this.stillTime + dt;
     this.world.rig.target.copy(this.world.player.position).add(new THREE.Vector3(0, 1.3, 0));
     this.world.rig.update(dt);
 
@@ -337,8 +350,7 @@ export class Game {
     if (inp.zoomDelta) this.world.rig.zoom(inp.zoomDelta);
 
     if (inp.pressed('Space')) {
-      if (this.world.player.grounded) this.audio.jump();
-      this.world.player.jump();
+      this.doJump();
     }
 
     this.near = this.world.nearest();
@@ -356,6 +368,27 @@ export class Game {
       const it = this.world.pick(c.x, c.y);
       if (it) this.interact(it, false);
     }
+  }
+
+  private jumpTimes: number[] = [];
+  private lastPos = new THREE.Vector3();
+  /** Seconds the explorer has been standing still. */
+  private stillTime = 0;
+  private doJump(): void {
+    if (!this.world.player.grounded) return this.world.player.jump();
+    this.audio.jump();
+    this.world.player.jump();
+    this.state.counters.jumps++;
+    this.jumpTimes.push(this.time);
+    while (this.jumpTimes.length && this.time - this.jumpTimes[0] > 10) this.jumpTimes.shift();
+    if (this.jumpTimes.length >= 15) this.secret('sec_bunny');
+  }
+
+  /** Unlock a secret achievement flag (checked by afterProgress). */
+  private secret(flag: string): void {
+    if (this.state.flags[flag]) return;
+    this.state.flags[flag] = true;
+    this.afterProgress();
   }
 
   private interact(it: Interactable | null, fromKey: boolean): void {
@@ -403,6 +436,7 @@ export class Game {
     this.combo = this.time - this.lastHitTime < 1.1 ? this.combo + 1 : 1;
     this.lastHitTime = this.time;
     const n = this.combo;
+    if (n > this.state.counters.bestCombo) this.state.counters.bestCombo = n;
     if (n >= 5 && n % 5 === 0) {
       const hp = this.world.impactPoint();
       const big = n >= 50 ? 'huge' : n >= 20 ? 'big' : '';
@@ -681,6 +715,7 @@ export class Game {
           addShards(this.state, big);
           if (lum > 0) addLumen(this.state, lum);
           this.state.counters.golden++;
+          if (this.meteors.active > 0) this.state.flags.sec_doubleEvent = true;
           this.goldenIt.active = false;
           this.audio.goldenBreak();
           this.world.rig.shake(0.6);
@@ -721,10 +756,17 @@ export class Game {
 
   /** Achievements & objectives after anything that changes progress. */
   private afterProgress(): void {
-    for (const a of checkAchievements(this.state)) {
-      this.markDirty();
-      this.audio.achievement();
-      this.hud.toast('trophy', `Succès : ${a.name}`, `${a.desc} · ${runeEffectText(a.stat, a.value)} pour toujours`, 'gold');
+    const got = checkAchievements(this.state);
+    if (!got.length) return;
+    this.markDirty();
+    this.audio.achievement();
+    // Several tiers at once (e.g. after a big jump): one toast per achievement, highest tier.
+    const best = new Map<string, AchievementUnlock>();
+    for (const u of got) best.set(u.def.id, u);
+    for (const u of best.values()) {
+      const d = u.def;
+      const tier = d.goals.length > 1 ? ` (${TIER_NAMES[u.tier - 1]})` : '';
+      this.hud.toast('trophy', `Succès : ${d.name}${tier}`, `${achievementDesc(d, u.tier - 1)} · ${runeEffectText(d.stat, d.values[u.tier - 1])} pour toujours`, u.tier >= 3 ? 'gold' : u.tier === 2 ? 'ether' : 'gold');
     }
   }
 
@@ -855,6 +897,7 @@ export class Game {
       if (this.panels.open === this.runePanel.el) this.runePanel.refresh();
       if (this.panels.open === this.journal.el) this.journal.refresh();
       this.hud.runesBtn.classList.toggle('hide', this.state.runeStats.rolls === 0 && !this.state.flags.migratedV2);
+      if (s.shards >= 25000 && s.machines.excavator === 0) s.flags.sec_miser = true;
       this.afterProgress();
       const ready = canPrestige(s);
       this.world.lighthouse.setAwake(ready);
@@ -1106,8 +1149,7 @@ export class Game {
     this.hud.actBtn.addEventListener('pointerleave', stopHold);
     this.hud.actBtn.addEventListener('pointercancel', stopHold);
     press(this.hud.jumpBtn, () => {
-      if (this.world.player.grounded) this.audio.jump();
-      this.world.player.jump();
+      this.doJump();
     });
   }
 

@@ -25,7 +25,7 @@ import { bonusTotals } from './bonuses';
 export type RuneTotals = Record<RuneStat, number>;
 
 export function emptyTotals(): RuneTotals {
-  return { prod: 0, click: 0, speed: 0, luck: 0, offline: 0, cost: 0, lumen: 0, crit: 0, seeds: 0, bulk: 0 };
+  return { prod: 0, click: 0, speed: 0, luck: 0, offline: 0, cost: 0, lumen: 0, crit: 0, seeds: 0, bulk: 0, frag: 0, pet: 0 };
 }
 
 /** Bonus of `count` copies of a rune worth `value` each. */
@@ -146,6 +146,7 @@ export function doRoll(state: GameState, family: FamilyId, rng: () => number = M
   for (let i = 0; i < n; i++) {
     const def = runeFor(family, rollRarity(luck, rng));
     state.runes[def.id] = (state.runes[def.id] ?? 0) + 1;
+    state.runeIndex[def.id] = true;
     out.push(def);
     const ri = RARITY_INDEX[def.rarity];
     if (ri > state.runeStats.best) state.runeStats.best = ri;

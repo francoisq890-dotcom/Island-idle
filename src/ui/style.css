@@ -319,7 +319,7 @@ button { font-family: inherit; color: inherit; }
 }
 .medal .ico { width: 100%; height: 100%; }
 .row-main { min-width: 0; }
-.row-title { display: flex; align-items: baseline; gap: 8px; }
+.row-title { display: flex; align-items: baseline; gap: 4px 8px; flex-wrap: wrap; }
 .row-title .nm { font-family: var(--display); font-size: 20px; font-weight: 650; line-height: 1.1; font-variation-settings: 'SOFT' 80; }
 .row-title .own { font-family: var(--display); font-size: 18px; font-weight: 700; color: var(--brass-lo); }
 .yield { display: flex; align-items: center; gap: 5px; margin-top: 2px; font-family: var(--display); font-size: 19px; font-weight: 700; color: var(--ether); font-variant-numeric: tabular-nums; }
@@ -597,3 +597,42 @@ table.odds .ef { color: var(--ink-soft); font-size: 14px; }
 @keyframes twinkle { 50% { transform: scale(1.18); } }
 .float.text.big { font-size: 30px; }
 .float.text.huge { font-size: 40px; -webkit-text-stroke-width: 5px; }
+
+/* ==========================================================================
+   Journal v3: tiered achievements, category chips, statistics
+   ========================================================================== */
+.ach-head { display: flex; gap: 14px; align-items: center; margin: 8px 2px 6px; padding: 8px 10px; background: var(--vellum-row); border-radius: 6px; box-shadow: inset 0 0 0 1px rgba(125, 83, 33, .35); }
+.ach-count { display: flex; flex-direction: column; align-items: center; min-width: 84px; }
+.ach-count b { font-family: var(--display); font-size: 32px; line-height: 1; font-weight: 750; color: var(--brass-lo); font-variant-numeric: tabular-nums; }
+.ach-count span { font-size: 12.5px; color: var(--ink-soft); }
+.ach-bonus { font-size: 13.5px; color: var(--good); font-weight: 700; line-height: 1.35; }
+.ach-bonus .tag { display: block; color: var(--ink-faint); font-weight: 800; font-size: 11.5px; letter-spacing: .14em; font-variant: small-caps; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 6px; }
+.chip { font: 700 14px var(--text); color: var(--ink-soft); background: var(--vellum-hi); border: 1.5px solid var(--brass-lo); border-radius: 14px; padding: 3px 10px 3px 11px; cursor: pointer; display: inline-flex; gap: 6px; align-items: baseline; transition: transform .12s, background .12s; }
+.chip small { font-size: 11.5px; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+.chip:hover { transform: translateY(-1px); }
+.chip.on { background: var(--brass); color: var(--vellum-hi); border-color: var(--brass-deep); box-shadow: inset 0 2px 0 var(--brass-hi); }
+.chip.on small { color: var(--vellum); }
+.medal.bronze { background: radial-gradient(circle, #fbe6d2 0 60%, transparent 61%), #b87342; border-color: #5c2f12; }
+.medal.silver { background: radial-gradient(circle, #f6f6fb 0 60%, transparent 61%), #a9a7bf; border-color: #4a4860; box-shadow: inset 0 2px 0 #dcdbea, inset 0 -2px 0 #6f6c86; }
+.row.ach.done .medal.gold { animation: medalShine 3.2s ease-in-out infinite; }
+@keyframes medalShine { 0%, 80%, 100% { filter: none; } 88% { filter: brightness(1.25) drop-shadow(0 0 6px #ffd27a); } }
+.tier { font-size: 11.5px; font-weight: 800; letter-spacing: .1em; font-variant: small-caps; padding: 0 6px; border-radius: 8px; color: #fff; }
+.tier.bronze { background: #a8643a; }
+.tier.silver { background: #77748f; }
+.tier.gold { background: var(--brass-lo); }
+.pips { display: inline-flex; gap: 3px; margin-left: auto; }
+.pips i { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--brass-lo); background: transparent; }
+.pips i.bronze { background: #b87342; }
+.pips i.silver { background: #a9a7bf; }
+.pips i.gold { background: var(--brass-hi); }
+.reward small { display: block; font-size: 10.5px; font-weight: 700; color: var(--ink-faint); letter-spacing: .06em; font-variant: small-caps; }
+.stats-grid.rarities { grid-template-columns: 1fr auto 1fr auto; margin-top: 6px; font-size: 14px; }
+@media (max-width: 760px) {
+  .ach-head { gap: 10px; padding: 6px 8px; }
+  .ach-count { min-width: 64px; }
+  .ach-count b { font-size: 26px; }
+  .chip { font-size: 13px; padding: 2px 8px; }
+  .reward { max-width: 92px; font-size: 12.5px; }
+  .pips { display: none; }
+}

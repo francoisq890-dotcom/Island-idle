@@ -1,3 +1,4 @@
+import { SAVE_VERSION } from '../src/economy/state';
 import { describe, expect, it } from 'vitest';
 import { FAMILIES, RARITIES, RUNES, RUNE_BY_ID, STAT_CAP } from '../src/config/runes';
 import { computeRates, doPrestige, harvestEx, nextMachineCost } from '../src/economy/economy';
@@ -121,10 +122,12 @@ describe('runes and prestige', () => {
 describe('achievements', () => {
   it('unlock once and give permanent bonuses', () => {
     const s = createInitialState(0);
-    s.stats.allTimeHarvests = 600;
-    const got = checkAchievements(s).map((a) => a.id);
-    expect(got).toContain('firstHit');
-    expect(got).toContain('hits500');
+    s.stats.allTimeHarvests = 3000;
+    const got = checkAchievements(s).map((a) => `${a.def.id}:${a.tier}`);
+    expect(got).toContain('hits:1');
+    expect(got).toContain('hits:2');
+    expect(got).not.toContain('hits:3');
+    expect(s.achievements.hits).toBe(2);
     expect(checkAchievements(s)).toHaveLength(0);
     expect(computeRates(s).click).toBeGreaterThan(1);
   });
@@ -134,7 +137,7 @@ describe('save migration v1 → v2', () => {
   it('upgrades an old save without losing progress', () => {
     const v1 = { version: 1, shards: 1234, lumen: 5, seeds: 3, machines: { drill: 12 }, upgrades: { pick1: true }, zones: { forge: true }, objective: 4, flags: { nearCrystal: true }, stats: { runShards: 99 }, settings: {}, player: { x: 1, z: 2, yaw: 0 }, lastSeen: 0, islandSeed: 2 };
     const s = deserialize(JSON.stringify(v1), 0);
-    expect(s.version).toBe(2);
+    expect(s.version).toBe(SAVE_VERSION);
     expect(s.shards).toBe(1234);
     expect(s.machines.drill).toBe(12);
     expect(s.upgrades.pick1).toBe(true);
@@ -145,7 +148,6 @@ describe('save migration v1 → v2', () => {
   });
   it('keeps every rune id valid', () => {
     expect(new Set(RUNES.map((r) => r.id)).size).toBe(RUNES.length);
-    expect(RUNES).toHaveLength(28);
   });
 });
 

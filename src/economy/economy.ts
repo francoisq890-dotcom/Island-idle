@@ -21,7 +21,7 @@ import {
 import { createInitialState, emptyMachines, type GameState } from './state';
 import { bonusTotals, type BonusTotals } from './bonuses';
 import { runesAfterPrestige } from './runes';
-import { hasPerk } from '../config/constellations';
+import { CONSTELLATIONS, hasPerk } from '../config/constellations';
 
 /** A critical strike multiplies the pickaxe gain by this. */
 export const CRIT_MULT = 5;
@@ -224,6 +224,7 @@ export function addShards(state: GameState, amount: number): void {
 export function addLumen(state: GameState, amount: number): void {
   state.lumen += amount;
   state.stats.runLumen += amount;
+  state.stats.allTimeLumen += amount;
 }
 
 /** Advance the simulation by `dt` seconds. Rates are constant between purchases. */
@@ -232,6 +233,8 @@ export function tick(state: GameState, dt: number, rates = computeRates(state)):
   addShards(state, rates.shards * dt);
   addLumen(state, rates.lumen * dt);
   state.stats.playSeconds += dt;
+  state.stats.runSeconds += dt;
+  if (rates.shards > state.counters.bestRate) state.counters.bestRate = rates.shards;
 }
 
 /** One manual strike on a crystal, with a chance of a critical hit. */
@@ -242,6 +245,7 @@ export function harvestEx(state: GameState, rates = computeRates(state), rng: ()
   state.stats.harvests += 1;
   state.stats.allTimeHarvests += 1;
   if (crit) state.counters.crits += 1;
+  if (v > state.counters.bestHit) state.counters.bestHit = v;
   return { value: v, crit };
 }
 
@@ -324,6 +328,10 @@ export function doPrestige(state: GameState): number {
   if (!canPrestige(state)) return 0;
   const gain = prestigeGain(state);
   const fresh = createInitialState();
+  const ct = state.counters;
+  if (ct.bestIsland === 0 || state.stats.runSeconds < ct.bestIsland) ct.bestIsland = Math.max(1, state.stats.runSeconds);
+  ct.bestGain = Math.max(ct.bestGain, gain);
+  state.stats.runSeconds = 0;
   state.seeds += gain;
   state.lifetimeSeeds += gain;
   // Runes: epic and rarer survive, the rest crumble (see DECISIONS.md).
@@ -344,6 +352,7 @@ export function doPrestige(state: GameState): number {
   state.islandSeed += 1;
   // Constellation perks: the new island starts stronger.
   const ls = state.lifetimeSeeds;
+  ct.constellations = CONSTELLATIONS.filter((x) => ls >= x.seeds).length;
   if (hasPerk(ls, 'drills5')) state.machines.drill = 5;
   if (hasPerk(ls, 'bridgeForge')) state.zones.forge = true;
   if (hasPerk(ls, 'altarLuck')) state.altar.luck = 5;

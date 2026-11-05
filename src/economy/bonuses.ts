@@ -15,7 +15,7 @@ let cacheVal: BonusTotals | null = null;
 function keyOf(s: GameState): string {
   let k = '';
   for (const id in s.runes) k += id + s.runes[id];
-  for (const id in s.achievements) k += id;
+  for (const id in s.achievements) k += id + s.achievements[id];
   return k;
 }
 

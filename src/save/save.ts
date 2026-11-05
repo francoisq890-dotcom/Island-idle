@@ -7,6 +7,7 @@
  */
 import { MACHINE_ORDER, UPGRADES, ZONE_ORDER } from '../config/economy';
 import { FAMILY_ORDER, RUNES, type FamilyId } from '../config/runes';
+import { ACHIEVEMENTS } from '../config/achievements';
 import { createInitialState, SAVE_VERSION, type GameState } from '../economy/state';
 
 export const STORAGE_KEY = 'iles-ether.save';
@@ -36,6 +37,56 @@ const MIGRATIONS: Record<number, (raw: Json) => Json> = {
     objective: num((raw as Json).objective, 0) >= 6 ? num((raw as Json).objective, 0) + 1 : num((raw as Json).objective, 0),
     flags: { ...obj((raw as Json).flags), migratedV2: true },
   }),
+  /**
+   * v2 → v3 (iteration 3): achievements become tiered (id → tier). Old
+   * achievements grant the equivalent tier of the new ones; the rest is
+   * recomputed from lifetime counters on load. The rune index starts from the
+   * runes currently owned.
+   */
+  2: (raw) => {
+    const old = obj(raw.achievements);
+    const ach: Record<string, number> = {};
+    for (const k of Object.keys(old)) {
+      if (old[k] !== true) continue;
+      const m = V2_ACHIEVEMENTS[k];
+      if (m) ach[m[0]] = Math.max(ach[m[0]] ?? 0, m[1]);
+    }
+    const index: Record<string, true> = {};
+    for (const k of Object.keys(obj(raw.runes))) index[k] = true;
+    return { ...raw, version: 3, achievements: ach, runeIndex: index, flags: { ...obj(raw.flags), migratedV3: true } };
+  },
+};
+
+/** v2 achievement id → [v3 achievement id, tier]. */
+const V2_ACHIEVEMENTS: Record<string, [string, number]> = {
+  hits500: ['hits', 1],
+  hits5000: ['hits', 2],
+  crits25: ['crits', 1],
+  drill50: ['drill', 1],
+  drill100: ['drill', 2],
+  exc25: ['excavator', 1],
+  ref25: ['refinery', 1],
+  gey10: ['geyser', 1],
+  pri10: ['prism', 1],
+  zones: ['zones', 3],
+  shard1m: ['shards', 1],
+  shard1b: ['shards', 2],
+  shard1t: ['shards', 3],
+  roll500: ['rolls', 2],
+  distinct10: ['distinct', 1],
+  gotRare: ['best', 1],
+  gotEpic: ['best', 2],
+  gotLeg: ['best', 3],
+  gotMyth: ['mythic', 1],
+  gotCel: ['celestial', 1],
+  meteor25: ['meteors', 1],
+  golden1: ['golden', 1],
+  golden10: ['golden', 2],
+  pick6: ['pick', 3],
+  prest1: ['prestiges', 1],
+  prest5: ['prestiges', 2],
+  seeds100: ['lseeds', 1],
+  index: ['index', 1],
 };
 
 export function serialize(state: GameState): string {
@@ -116,7 +167,12 @@ export function deserialize(text: string, now = Date.now()): GameState {
   const fr = obj(raw.familyRolls);
   for (const f of FAMILY_ORDER) s.familyRolls[f] = Math.floor(num(fr[f], 0));
   const ach = obj(raw.achievements);
-  for (const k of Object.keys(ach)) if (ach[k] === true) s.achievements[k] = true;
+  for (const a of ACHIEVEMENTS) {
+    const t = Math.floor(num(ach[a.id], 0));
+    if (t > 0) s.achievements[a.id] = Math.min(t, a.goals.length);
+  }
+  const idx = obj(raw.runeIndex);
+  for (const r of RUNES) if (idx[r.id] === true || s.runes[r.id]) s.runeIndex[r.id] = true;
   const ct = obj(raw.counters);
   for (const k of Object.keys(s.counters) as (keyof GameState['counters'])[]) s.counters[k] = num(ct[k], 0);
   s.lifetimeSeeds = num(raw.lifetimeSeeds, s.seeds);

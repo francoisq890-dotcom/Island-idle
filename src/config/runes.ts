@@ -37,7 +37,7 @@ export const RARITIES: RarityDef[] = [
 export const RARITY_INDEX: Record<RarityId, number> = Object.fromEntries(RARITIES.map((r, i) => [r.id, i])) as Record<RarityId, number>;
 
 /** What a rune does. Values are per copy; copies stack with `stackCurve`. */
-export type RuneStat = 'prod' | 'click' | 'speed' | 'luck' | 'offline' | 'cost' | 'lumen' | 'crit' | 'seeds' | 'bulk';
+export type RuneStat = 'prod' | 'click' | 'speed' | 'luck' | 'offline' | 'cost' | 'lumen' | 'crit' | 'seeds' | 'bulk' | 'frag' | 'pet';
 
 export const STAT_LABEL: Record<RuneStat, string> = {
   prod: 'production',
@@ -50,6 +50,8 @@ export const STAT_LABEL: Record<RuneStat, string> = {
   crit: 'chance de coup critique',
   seeds: 'graines au prestige',
   bulk: 'runes par tirage',
+  frag: 'fragments de rune',
+  pet: 'force des familiers',
 };
 
 /** Hard caps so stacking never breaks the game. */

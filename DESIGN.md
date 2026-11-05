@@ -72,7 +72,7 @@ Temps indiqués pour un joueur moyen (profil « moyen » du bot). Les objectifs 
 Ressources : **éclats** (cyan), **Lumen** (or), **graines** (violet), et une nouvelle, **fragments de rune** (encre rose `#b8406a`). Les fragments sont la monnaie des runes, distincte de la production. Sans ça, la fusion concurrencerait directement les machines et serait toujours ou jamais rentable.
 
 ### P0 — Succès v2 (obligatoire)
-- **62 succès** en 6 catégories (récolte, machines, runes, prestige, exploration, secrets), presque tous à **3 paliers** (bronze, argent, or), soit plus de 170 paliers à débloquer.
+- **62 succès** en 6 catégories (récolte, machines, runes, prestige, exploration, secrets), presque tous à **3 paliers** (bronze, argent, or), soit 163 paliers à débloquer.
 - **Récompense à chaque palier**, petite mais réelle : +1 à 3 % de production, de valeur de coup, de chance, de Lumen, de fragments… Les bonus passent par `bonusTotals()` et ses plafonds (`STAT_CAP`).
 - **8 succès cachés** (affichés « ??? » jusqu’au déblocage), basés sur des gestes du joueur : prestige la nuit, sauts en rafale, rester contempler, etc.
 - **Page dédiée** (le Journal, onglet *Succès*) : filtres par catégorie, barre de progression vers le palier suivant, médaille bronze/argent/or, total des récompenses.
