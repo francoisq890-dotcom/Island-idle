@@ -60,6 +60,8 @@ export interface GameState {
   achievements: Record<string, number>;
   /** Lifetime counters (achievements, statistics). Every key is read defensively. */
   counters: Counters;
+  /** Game-time clock driving the day/night cycle (seconds). Since save v3. */
+  clock: number;
   /** Every rune ever found (the index survives prestige). Since save v3. */
   runeIndex: Record<string, true>;
   /** Total star seeds ever earned (drives the Constellations long-term goal). */
@@ -154,5 +156,6 @@ export function createInitialState(now = Date.now()): GameState {
     counters: emptyCounters(),
     lifetimeSeeds: 0,
     runeIndex: {},
+    clock: 0,
   };
 }

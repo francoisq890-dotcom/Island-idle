@@ -26,6 +26,8 @@ export function applyOffline(state: GameState, now = Date.now()): OfflineReport 
   const lumen = Math.max(0, rates.lumen) * creditedSeconds * eff;
   addShards(state, shards);
   addLumen(state, lumen);
+  // The sky keeps turning while away (nights spent away are not counted).
+  state.clock += creditedSeconds;
   state.lastSeen = now;
   return { awaySeconds, creditedSeconds, shards, lumen, capped: awaySeconds > OFFLINE.maxSeconds };
 }

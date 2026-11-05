@@ -21,6 +21,7 @@ import {
 } from '../config/runes';
 import type { GameState } from './state';
 import { bonusTotals } from './bonuses';
+import { isNight, nightLuckMult } from './daynight';
 
 export type RuneTotals = Record<RuneStat, number>;
 
@@ -52,7 +53,7 @@ export function runeTotals(state: GameState): RuneTotals {
 }
 
 export function luckOf(state: GameState, totals: { luck: number } = bonusTotals(state), extraLuck = 0): number {
-  return (1 + state.altar.luck * ROLL.luckPerLevel + totals.luck + extraLuck) * (1 + state.seeds * ROLL.luckPerSeed);
+  return (1 + state.altar.luck * ROLL.luckPerLevel + totals.luck + extraLuck) * (1 + state.seeds * ROLL.luckPerSeed) * nightLuckMult(state);
 }
 
 export function bulkOf(state: GameState, totals: { bulk: number } = bonusTotals(state)): number {
@@ -153,6 +154,7 @@ export function doRoll(state: GameState, family: FamilyId, rng: () => number = M
   }
   state.runeStats.rolls += 1;
   state.runeStats.runes += n;
+  if (isNight(state)) state.counters.nightRolls += 1;
   return out;
 }
 

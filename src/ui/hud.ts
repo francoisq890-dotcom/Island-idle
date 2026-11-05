@@ -41,6 +41,7 @@ export class Hud {
   private floaters = el('div', 'floaters');
   private toasts = el('div', 'toasts');
   private compassEl = el('div', 'compass', '<i></i>');
+  private clockEl = el('div', 'clock-dial');
   readonly actions = el('div', 'actions');
   readonly workshopBtn: HTMLButtonElement;
   readonly prestigeBtn: HTMLButtonElement;
@@ -65,7 +66,9 @@ export class Hud {
     this.resShards.title = 'Éclats : la ressource de base, récoltée sur les cristaux';
     this.resLumen.title = 'Lumen : produit par les raffineries, sert aux ponts et machines rares';
     this.resSeeds.title = 'Graines d’étoile : bonus permanent de production (prestige)';
-    resources.append(this.resShards, this.resLumen, this.resSeeds);
+    resources.append(this.resShards, this.resLumen, this.resSeeds, this.clockEl);
+    this.clockEl.innerHTML = `<svg viewBox="0 0 40 40" class="dial"><circle cx="20" cy="20" r="16" class="track"/><circle cx="20" cy="20" r="16" class="arc" pathLength="100"/></svg><span class="glyph"></span><span class="txt"></span>`;
+    this.clockEl.title = 'Cycle du jour et de la nuit : la nuit, la chance des runes monte de 50 %';
 
     this.objective.innerHTML = `<div class="tag">objectif</div><div class="text"></div><div class="hint"></div><div class="bar"><i></i></div><div class="count"></div>`;
 
@@ -116,6 +119,15 @@ export class Hud {
     if (this.last.lumen >= 0 && lumen > this.last.lumen + Math.max(1, lumenRate * 0.6)) this.bump(this.resLumen);
     this.last.shards = shards;
     this.last.lumen = lumen;
+  }
+
+  /** Day/night dial: progress of the current phase and a short label. */
+  setClock(night: boolean, progress: number, label: string, visible: boolean): void {
+    this.clockEl.classList.toggle('hide', !visible);
+    this.clockEl.classList.toggle('night', night);
+    this.set('cg', this.clockEl.querySelector('.glyph')!, night ? ICONS.moon : ICONS.sun);
+    this.set('ct', this.clockEl.querySelector('.txt')!, label);
+    (this.clockEl.querySelector('.arc') as SVGCircleElement).style.strokeDasharray = `${Math.max(0, Math.min(100, progress * 100)).toFixed(1)} 100`;
   }
 
   private bump(e: HTMLElement): void {

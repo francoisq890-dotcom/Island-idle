@@ -47,6 +47,8 @@ import { checkAchievements, type AchievementUnlock } from './economy/achievement
 import { TIER_NAMES } from './config/achievements';
 import { achievementDesc } from './ui/journal';
 import { Renderer } from './world/renderer';
+import { isNight, nightAmount, nightLength, secondsToDawn, secondsToNight } from './economy/daynight';
+import { DAY_NIGHT } from './config/daynight';
 import { World, type Interactable } from './world/world';
 
 const AUTOSAVE_SECONDS = 10;
@@ -275,6 +277,7 @@ export class Game {
 
     // Economy.
     tick(this.state, dt, this.rates);
+    this.updateDayNight();
     this.rollTimer = Math.max(0, this.rollTimer - dt);
     if (this.started && !this.busy && this.state.altar.auto && this.state.runeAuto && this.rollTimer <= 0) {
       this.rollTimer = cooldownOf(this.state);
@@ -315,6 +318,35 @@ export class Game {
 
     this.renderer.render(realDt);
     this.input.endFrame();
+  }
+
+  private wasNight: boolean | null = null;
+
+  /** Sky, lights, sounds and announcements of the day/night cycle. */
+  private updateDayNight(): void {
+    const s = this.state;
+    const k = nightAmount(s);
+    this.renderer.setNight(k);
+    this.audio.night = k;
+    const night = isNight(s);
+    if (this.wasNight !== null && night !== this.wasNight && this.started && !this.busy) {
+      if (night) {
+        this.audio.nightFall();
+        if (!s.flags.nightSeen) {
+          s.flags.nightSeen = true;
+          this.hud.toast('moon', 'La nuit tombe sur l’archipel', `Les cristaux brillent et la chance des runes monte de 50 % jusqu’à l’aube (${formatDuration(nightLength(s))}).`, 'violet');
+        } else this.hud.toast('moon', 'La nuit tombe', 'Chance des runes ×1,5 jusqu’à l’aube', 'violet');
+      } else {
+        this.audio.dawn();
+        this.hud.toast('sun', 'L’aube se lève', `Prochaine nuit dans ${formatDuration(secondsToNight(s))}`, 'gold');
+      }
+      this.afterProgress();
+    }
+    this.wasNight = night;
+    if (night && this.stillTime >= 60) this.secret('sec_stargazer');
+    const label = night ? `<b>Nuit</b> · chance ×1,5 · aube dans ${formatDuration(secondsToDawn(s))}` : `Nuit dans <b>${formatDuration(secondsToNight(s))}</b>`;
+    const prog = night ? 1 - secondsToDawn(s) / nightLength(s) : 1 - secondsToNight(s) / (DAY_NIGHT.cycle - nightLength(s));
+    this.hud.setClock(night, prog, label, s.stats.playSeconds > 60 || s.stats.prestiges > 0);
   }
 
   private markDirty(): void {

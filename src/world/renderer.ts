@@ -9,6 +9,19 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { PALETTE } from '../config/palette';
+import { GLOBAL_EMIT } from './geom';
+
+/** Night palette (sky, fog, lights). */
+const NIGHT = {
+  skyTop: 0x0b0f2e,
+  skyMid: 0x252866,
+  skyHorizon: 0x5c4785,
+  skyBelow: 0x3a3060,
+  fog: 0x4a3f72,
+  sun: 0x9fb4ff,
+  hemiSky: 0x5d6ad6,
+  hemiGround: 0x3a2f5a,
+};
 
 const GradeShader = {
   uniforms: {
@@ -59,6 +72,10 @@ export class Renderer {
   private frameTimes: number[] = [];
   private adaptCooldown = 3;
   quality: 'auto' | 'high' | 'low' = 'auto';
+  private night = 0;
+  private skyTime = 0;
+  private dayColors = { fog: new THREE.Color(PALETTE.fog), sun: new THREE.Color(0xffdcb0), hemiSky: new THREE.Color(0xc4ccff), hemiGround: new THREE.Color(0xd9967a), bg: new THREE.Color(PALETTE.skyHorizon) };
+  private nightColors = { fog: new THREE.Color(NIGHT.fog), sun: new THREE.Color(NIGHT.sun), hemiSky: new THREE.Color(NIGHT.hemiSky), hemiGround: new THREE.Color(NIGHT.hemiGround), bg: new THREE.Color(NIGHT.skyHorizon) };
   /** Offset of the sun from the shadow focus point. */
   private sunOffset = new THREE.Vector3(-26, 38, 18);
 
@@ -132,6 +149,13 @@ export class Renderer {
         below: { value: new THREE.Color(PALETTE.skyBelow) },
         sunDir: { value: new THREE.Vector3(-0.55, 0.32, 0.4).normalize() },
         sunColor: { value: new THREE.Color(PALETTE.sun) },
+        nTop: { value: new THREE.Color(NIGHT.skyTop) },
+        nMid: { value: new THREE.Color(NIGHT.skyMid) },
+        nHorizon: { value: new THREE.Color(NIGHT.skyHorizon) },
+        nBelow: { value: new THREE.Color(NIGHT.skyBelow) },
+        moonDir: { value: new THREE.Vector3(0.45, 0.42, -0.62).normalize() },
+        uNight: { value: 0 },
+        uTime: { value: 0 },
       },
       vertexShader: /* glsl */ `
         varying vec3 vDir;
@@ -144,14 +168,41 @@ export class Renderer {
       fragmentShader: /* glsl */ `
         uniform vec3 top; uniform vec3 mid; uniform vec3 horizon; uniform vec3 below;
         uniform vec3 sunDir; uniform vec3 sunColor;
+        uniform vec3 nTop; uniform vec3 nMid; uniform vec3 nHorizon; uniform vec3 nBelow;
+        uniform vec3 moonDir; uniform float uNight; uniform float uTime;
         varying vec3 vDir;
+        float hash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
         void main() {
-          float h = vDir.y;
+          vec3 d = normalize(vDir);
+          float h = d.y;
           vec3 c = mix(horizon, mid, smoothstep(0.02, 0.28, h));
           c = mix(c, top, smoothstep(0.25, 0.85, h));
           c = mix(c, below, smoothstep(0.0, -0.25, h));
-          float s = max(dot(normalize(vDir), sunDir), 0.0);
-          c += sunColor * (pow(s, 600.0) * 3.0 + pow(s, 12.0) * 0.35);
+          vec3 n = mix(nHorizon, nMid, smoothstep(0.02, 0.3, h));
+          n = mix(n, nTop, smoothstep(0.25, 0.85, h));
+          n = mix(n, nBelow, smoothstep(0.0, -0.25, h));
+          c = mix(c, n, uNight);
+          float s = max(dot(d, sunDir), 0.0);
+          c += sunColor * (pow(s, 600.0) * 3.0 + pow(s, 12.0) * 0.35) * (1.0 - uNight);
+          if (uNight > 0.01) {
+            // Stars: a hashed grid on the sphere, twinkling, fading near the horizon.
+            vec3 g = floor(d * 140.0);
+            float r = hash(g);
+            float star = step(0.985, r) * smoothstep(0.02, 0.25, h);
+            float tw = 0.6 + 0.4 * sin(uTime * (1.5 + r * 4.0) + r * 60.0);
+            vec3 sc = mix(vec3(1.0, 0.92, 0.8), vec3(0.75, 0.85, 1.0), hash(g + 7.0));
+            c += sc * star * tw * 1.6 * uNight;
+            // Moon with a soft halo.
+            float m = max(dot(d, moonDir), 0.0);
+            c += vec3(0.95, 0.93, 1.0) * (smoothstep(0.9993, 0.9996, m) * 2.4 + pow(m, 60.0) * 0.25) * uNight;
+            // Aurora: slow curtains above the northern horizon.
+            float az = atan(d.x, -d.z);
+            float band = smoothstep(0.08, 0.22, h) * smoothstep(0.62, 0.3, h);
+            float wave = sin(az * 5.0 + uTime * 0.25 + sin(az * 11.0 - uTime * 0.4) * 0.8);
+            float curtain = pow(0.5 + 0.5 * wave, 3.0) * smoothstep(-0.2, 0.6, -d.z);
+            vec3 ac = mix(vec3(0.25, 1.0, 0.75), vec3(0.75, 0.45, 1.0), smoothstep(0.12, 0.5, h));
+            c += ac * band * curtain * 0.55 * uNight;
+          }
           gl_FragColor = vec4(c, 1.0);
           #include <tonemapping_fragment>
           #include <colorspace_fragment>
@@ -173,6 +224,31 @@ export class Renderer {
     this.sun.target.position.set(x, target.y, z);
     this.sun.position.set(x + this.sunOffset.x, target.y + this.sunOffset.y, z + this.sunOffset.z);
     this.sky.position.copy(this.camera.position);
+  }
+
+  /** 0 = day … 1 = night: sky, fog, lights, bloom and emissive glow follow. */
+  setNight(k: number): void {
+    this.night = k;
+    const u = (this.sky.material as THREE.ShaderMaterial).uniforms;
+    u.uNight.value = k;
+    const fog = this.scene.fog as THREE.Fog;
+    fog.color.copy(this.dayColors.fog).lerp(this.nightColors.fog, k);
+    (this.scene.background as THREE.Color).copy(this.dayColors.bg).lerp(this.nightColors.bg, k);
+    this.sun.color.copy(this.dayColors.sun).lerp(this.nightColors.sun, k);
+    this.sun.intensity = 3.2 - 2.45 * k;
+    this.hemi.color.copy(this.dayColors.hemiSky).lerp(this.nightColors.hemiSky, k);
+    this.hemi.groundColor.copy(this.dayColors.hemiGround).lerp(this.nightColors.hemiGround, k);
+    this.hemi.intensity = 1.0 - 0.35 * k;
+    // At night the moon lights from the other side.
+    this.sunOffset.set(-26 + 50 * k, 38, 18 - 46 * k);
+    this.bloom.strength = 0.55 + 0.35 * k;
+    GLOBAL_EMIT.value = 1 + 0.9 * k;
+    this.grade.uniforms.uSaturation.value = 1.08 - 0.22 * k;
+    this.grade.uniforms.uWarm.value.set(1.03 - 0.08 * k, 1.0 - 0.02 * k, 0.96 + 0.1 * k);
+  }
+
+  get nightAmount(): number {
+    return this.night;
   }
 
   set flash(v: number) {
@@ -210,6 +286,8 @@ export class Renderer {
   stats = { calls: 0, triangles: 0 };
 
   render(dt: number): void {
+    this.skyTime += dt;
+    (this.sky.material as THREE.ShaderMaterial).uniforms.uTime.value = this.skyTime;
     this.renderer.info.autoReset = false;
     this.renderer.info.reset();
     this.composer.render(dt);

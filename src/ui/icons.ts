@@ -37,6 +37,8 @@ export const ICONS = {
   clock: s(`<circle cx="12" cy="12" r="9" fill="#f3e6cc"/><path d="M12 7v5.5l3.5 2"/>`),
   clover: s(`<path d="M12 11.5C9 4 3.5 8 8 12c-4.5 4 1 8 4-.5 3 8.5 8.5 4.5 4-.5 4.5-4-1-8-4 .5z" fill="#8fd18a"/><path d="M12 12l2.5 9.5" stroke="#3f7f43"/>`),
   bolt: s(`<path d="M13.5 2 5 13.5h6L9.5 22 19 9.5h-6z" fill="#ebbd6a"/>`),
+  moon: s(`<path d="M15.5 3.2A8.8 8.8 0 1 0 20.8 15 7 7 0 0 1 15.5 3.2z" fill="#e6dcff"/><circle cx="10" cy="10.5" r="1.3" fill="#b7a2e8" stroke="none"/><circle cx="13.5" cy="16" r="1" fill="#b7a2e8" stroke="none"/>`),
+  sun: s(`<g stroke-width="1.4"><path d="M12 1.8v2.6M12 19.6v2.6M1.8 12h2.6M19.6 12h2.6M4.8 4.8l1.8 1.8M17.4 17.4l1.8 1.8M4.8 19.2l1.8-1.8M17.4 6.6l1.8-1.8"/></g><circle cx="12" cy="12" r="5.2" fill="#ffd27a"/>`),
   dice: s(`<path d="M4 6.5 12 2l8 4.5v11L12 22l-8-4.5z" fill="#efe7f7"/><path d="M4 6.5l8 4.5 8-4.5M12 11v11" stroke-width="1.2"/><circle cx="12" cy="6.5" r="1" fill="${INK}"/><circle cx="7.5" cy="13" r="1" fill="${INK}"/><circle cx="16.5" cy="13" r="1" fill="${INK}"/>`),
 };
 

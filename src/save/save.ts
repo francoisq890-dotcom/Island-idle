@@ -176,6 +176,7 @@ export function deserialize(text: string, now = Date.now()): GameState {
   const ct = obj(raw.counters);
   for (const k of Object.keys(s.counters) as (keyof GameState['counters'])[]) s.counters[k] = num(ct[k], 0);
   s.lifetimeSeeds = num(raw.lifetimeSeeds, s.seeds);
+  s.clock = num(raw.clock, 0);
 
   const p = obj(raw.player);
   s.player.x = typeof p.x === 'number' && isFinite(p.x) ? p.x : s.player.x;

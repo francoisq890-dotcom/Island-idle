@@ -145,6 +145,9 @@ export class Audio {
 
   private amb: Record<string, { gain: GainNode; level: number; target: number; timer: number }> = {};
   private ambZone = 'home';
+  /** 0 = day … 1 = night (crickets replace birds). */
+  night = 0;
+  private cricketTimer = 1;
 
   ambZoneOr(fallback: string): string {
     return this.ambZone || fallback;
@@ -205,6 +208,16 @@ export class Audio {
   private updateAmbience(dt: number): void {
     if (!this.ctx) return;
     this.ensureAmbience();
+    // Crickets at night on every island: trains of tiny high pulses.
+    if (this.night > 0.3) {
+      this.cricketTimer -= dt;
+      if (this.cricketTimer <= 0) {
+        this.cricketTimer = 0.6 + Math.random() * 1.6;
+        const f = 4200 + Math.random() * 900;
+        const n = 3 + Math.floor(Math.random() * 4);
+        for (let i = 0; i < n; i++) this.tone(f, { type: 'square', attack: 0.003, decay: 0.025, gain: 0.006 * this.night, when: i * 0.055, dest: this.music });
+      }
+    }
     for (const z in this.amb) {
       const a = this.amb[z];
       a.target = z === this.ambZone ? 1 : 0;
@@ -213,7 +226,11 @@ export class Audio {
       if (a.level < 0.05) continue;
       a.timer -= dt;
       if (a.timer > 0) continue;
-      if (z === 'home') {
+      if (z === 'home' && this.night > 0.5) {
+        a.timer = 3 + Math.random() * 3;
+        // An owl, far away.
+        if (Math.random() < 0.35) [0, 0.45].forEach((w, i) => this.ambTone(z, i ? 392 : 440, { decay: 0.5, gain: 0.03, glide: 0.92, when: w }));
+      } else if (z === 'home') {
         // Birds: short chirps made of fast pitch sweeps.
         a.timer = 1.5 + Math.random() * 4;
         const f = 2400 + Math.random() * 1400;
@@ -411,6 +428,17 @@ export class Audio {
     this.noise({ freq: 200, q: 0.5, decay: 3.5, gain: 0.25, type: 'lowpass', sweep: 8 });
     [0, 7, 12, 16, 19, 24, 28, 31].forEach((n, i) => this.tone(this.midi(55 + n), { type: 'sine', attack: 0.3, decay: 3, gain: 0.06, when: 1.8 + i * 0.12, reverb: 1 }));
     this.tone(55, { type: 'sine', attack: 0.5, decay: 3.5, gain: 0.25, glide: 0.5 });
+  }
+
+  /** Night falls: a low, slow chord and a high shimmer. */
+  nightFall(): void {
+    [50, 57, 62, 65, 69].forEach((n, i) => this.tone(this.midi(n), { type: 'sine', attack: 0.8, decay: 4, gain: 0.04, when: i * 0.25, reverb: 1.2 }));
+    [86, 89, 93].forEach((n, i) => this.tone(this.midi(n), { type: 'sine', attack: 0.01, decay: 2, gain: 0.015, when: 1 + i * 0.3, reverb: 1.5 }));
+  }
+
+  /** Dawn: a rising major arpeggio. */
+  dawn(): void {
+    [62, 66, 69, 74, 78].forEach((n, i) => this.tone(this.midi(n), { type: 'triangle', attack: 0.05, decay: 1.6, gain: 0.03, when: i * 0.14, reverb: 1 }));
   }
 
   welcome(): void {

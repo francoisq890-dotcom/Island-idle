@@ -21,6 +21,7 @@ import {
 import { createInitialState, emptyMachines, type GameState } from './state';
 import { bonusTotals, type BonusTotals } from './bonuses';
 import { runesAfterPrestige } from './runes';
+import { advanceClock } from './daynight';
 import { CONSTELLATIONS, hasPerk } from '../config/constellations';
 
 /** A critical strike multiplies the pickaxe gain by this. */
@@ -234,6 +235,7 @@ export function tick(state: GameState, dt: number, rates = computeRates(state)):
   addLumen(state, rates.lumen * dt);
   state.stats.playSeconds += dt;
   state.stats.runSeconds += dt;
+  advanceClock(state, dt);
   if (rates.shards > state.counters.bestRate) state.counters.bestRate = rates.shards;
 }
 

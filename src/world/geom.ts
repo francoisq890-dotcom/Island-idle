@@ -82,6 +82,9 @@ export function jitter(geo: THREE.BufferGeometry, amount: number, seed: number):
  * Standard flat-shaded material that reads the `color` attribute and an `emit`
  * attribute (per-vertex emissive mask) so glowing parts bloom.
  */
+/** Shared uniform: glow multiplier for every emissive part (raised at night). */
+export const GLOBAL_EMIT = { value: 1 };
+
 export function makeMaterial(opts: { emissive?: THREE.ColorRepresentation; emissiveIntensity?: number; roughness?: number; metalness?: number } = {}): THREE.MeshStandardMaterial {
   const mat = new THREE.MeshStandardMaterial({
     vertexColors: true,
@@ -92,13 +95,14 @@ export function makeMaterial(opts: { emissive?: THREE.ColorRepresentation; emiss
   const emissiveIntensity = opts.emissiveIntensity ?? 2.5;
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uEmitBoost = { value: emissiveIntensity };
+    shader.uniforms.uGlobalEmit = GLOBAL_EMIT;
     mat.userData.shader = shader;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nattribute float emit;\nvarying float vEmit;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvEmit = emit;');
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying float vEmit;\nuniform float uEmitBoost;')
-      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * vEmit * uEmitBoost;\ndiffuseColor.rgb *= 1.0 - min(vEmit, 1.0) * 0.75;');
+      .replace('#include <common>', '#include <common>\nvarying float vEmit;\nuniform float uEmitBoost;\nuniform float uGlobalEmit;')
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * vEmit * uEmitBoost * uGlobalEmit;\ndiffuseColor.rgb *= 1.0 - min(vEmit, 1.0) * 0.75;');
   };
   mat.customProgramCacheKey = () => 'emit' + emissiveIntensity;
   return mat;

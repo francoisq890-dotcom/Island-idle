@@ -19,7 +19,7 @@ if (process.env.SAVE) {
 }
 await page.goto(url);
 await page.waitForTimeout(2500);
-const snap = async (name) => { await page.screenshot({ path: `${out}/${name}.png` }); console.log('shot', name); };
+const snap = async (name) => { await page.screenshot({ path: `${out}/${name}.png`, timeout: 120000 }); console.log('shot', name); };
 const ev = (fn, arg) => page.evaluate(fn, arg);
 
 if (scenario === 'basic') {
