@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ACHIEVEMENTS, ACH_CATEGORIES, tierFor, TOTAL_TIERS } from '../src/config/achievements';
 import { achievementTotals, checkAchievements } from '../src/economy/achievements';
-import { createInitialState } from '../src/economy/state';
+import { createInitialState, SAVE_VERSION } from '../src/economy/state';
 import { deserialize } from '../src/save/save';
 
 describe('achievements v2', () => {
@@ -41,7 +41,7 @@ describe('save migration v2 → v3', () => {
   it('maps old achievements to tiers and builds the rune index', () => {
     const v2 = { version: 2, shards: 10, machines: { drill: 3 }, achievements: { hits5000: true, gotEpic: true, prest1: true, unknown: true }, runes: { st1: 4, em5: 1 }, stats: { allTimeHarvests: 6000, prestiges: 1 }, lastSeen: 0, islandSeed: 1 };
     const s = deserialize(JSON.stringify(v2), 0);
-    expect(s.version).toBe(3);
+    expect(s.version).toBe(SAVE_VERSION);
     expect(s.achievements.hits).toBe(2);
     expect(s.achievements.best).toBe(2);
     expect(s.achievements.prestiges).toBe(1);

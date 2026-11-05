@@ -8,6 +8,7 @@
 import { MACHINE_ORDER, UPGRADES, ZONE_ORDER } from '../config/economy';
 import { FAMILY_ORDER, RUNES, type FamilyId } from '../config/runes';
 import { ACHIEVEMENTS } from '../config/achievements';
+import { PET_RARITIES, PETS, SPECIES_ORDER, type PetRarity, type SpeciesId } from '../config/familiars';
 import { createInitialState, SAVE_VERSION, type GameState } from '../economy/state';
 
 export const STORAGE_KEY = 'iles-ether.save';
@@ -54,6 +55,17 @@ const MIGRATIONS: Record<number, (raw: Json) => Json> = {
     const index: Record<string, true> = {};
     for (const k of Object.keys(obj(raw.runes))) index[k] = true;
     return { ...raw, version: 3, achievements: ach, runeIndex: index, flags: { ...obj(raw.flags), migratedV3: true } };
+  },
+  /**
+   * v3 → v4 (familiars): a tutorial step "hatch your first familiar" was
+   * inserted at index 13 (after the first geyser). Players already past it get
+   * the free first egg and a one-time announcement.
+   */
+  3: (raw) => {
+    const o = num(raw.objective, 0);
+    const past = o >= 13;
+    const hasPets = Array.isArray(raw.pets) && raw.pets.length > 0;
+    return { ...raw, version: 4, objective: past ? o + 1 : o, eggs: past && !hasPets ? Math.max(1, num(raw.eggs, 0)) : num(raw.eggs, 0), flags: { ...obj(raw.flags), ...(past ? { migratedV4: true } : {}) } };
   },
 };
 
@@ -178,6 +190,19 @@ export function deserialize(text: string, now = Date.now()): GameState {
   s.lifetimeSeeds = num(raw.lifetimeSeeds, s.seeds);
   s.clock = num(raw.clock, 0);
   s.fragments = num(raw.fragments, 0);
+  if (Array.isArray(raw.pets)) {
+    for (const x of raw.pets.slice(0, PETS.maxOwned)) {
+      const o = obj(x);
+      const species = SPECIES_ORDER.includes(o.species as SpeciesId) ? (o.species as SpeciesId) : null;
+      const rarity = PET_RARITIES.some((r) => r.id === o.rarity) ? (o.rarity as PetRarity) : null;
+      if (!species || !rarity) continue;
+      s.pets.push({ id: Math.floor(num(o.id, s.pets.length + 1, 1)), species, rarity, level: Math.min(PETS.maxLevel, Math.max(1, Math.floor(num(o.level, 1, 1)))), perched: o.perched === true, away: o.away === true });
+    }
+  }
+  s.eggs = Math.min(PETS.maxOwned, Math.floor(num(raw.eggs, 0)));
+  s.eggsBought = Math.floor(num(raw.eggsBought, 0));
+  s.petSerial = Math.max(Math.floor(num(raw.petSerial, 0)), ...s.pets.map((p) => p.id), 0);
+  s.extraPerches = Math.floor(num(raw.extraPerches, 0));
   const pity = obj(raw.pity);
   s.pity = { epic: Math.floor(num(pity.epic, 0)), legendary: Math.floor(num(pity.legendary, 0)) };
 

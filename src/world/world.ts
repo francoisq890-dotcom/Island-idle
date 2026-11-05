@@ -15,6 +15,7 @@ import { Ease, type Tweens } from '../core/tween';
 import { Bridge } from './bridges';
 import { Altar } from './altars';
 import { Crucible, CRUCIBLE_POS } from './crucible';
+import { Familiars, NEST_POS } from './familiars';
 import { ALTAR_FAMILIES, FAMILIES, type FamilyId } from '../config/runes';
 import { CameraRig } from './cameraRig';
 import { Conveyors } from './conveyors';
@@ -27,7 +28,7 @@ import { Player } from './player';
 import type { Renderer } from './renderer';
 import { buildIslandMesh, distToPolyline, Ground, islandTopHeight, type Trail } from './terrain';
 
-export type InteractKind = 'crystal' | 'site' | 'bridge' | 'lighthouse' | 'altar' | 'golden' | 'crucible' | 'guardian';
+export type InteractKind = 'crystal' | 'site' | 'bridge' | 'lighthouse' | 'altar' | 'golden' | 'crucible' | 'guardian' | 'nest';
 
 export interface Interactable {
   id: string;
@@ -87,6 +88,7 @@ export class World {
   readonly conveyors: Conveyors;
   readonly altars = new Map<FamilyId, Altar>();
   readonly crucible: Crucible;
+  readonly familiars: Familiars;
   private homeY = new Map<THREE.Object3D, number>();
   readonly interactables: Interactable[] = [];
   private islandMeshes = new Map<ZoneId, THREE.Mesh>();
@@ -150,6 +152,11 @@ export class World {
     this.crucible = new Crucible(h(CRUCIBLE_POS[0], CRUCIBLE_POS[1]), this.particles);
     this.scene.add(this.crucible.group);
     this.ground.obstacles.push({ x: CRUCIBLE_POS[0], z: CRUCIBLE_POS[1], r: 1.7, zone: 'home', active: () => true });
+
+    // Nid d'éther (familiars).
+    this.familiars = new Familiars(h(NEST_POS[0], NEST_POS[1]), this.particles);
+    this.scene.add(this.familiars.group);
+    this.ground.obstacles.push({ x: NEST_POS[0], z: NEST_POS[1], r: 1.4, zone: 'geyser', active: () => true });
 
     // Obstacles.
     this.ground.obstacles.push({ x: NEXUS[0], z: NEXUS[1], r: 2.5, zone: 'home', active: () => true });
@@ -223,6 +230,8 @@ export class World {
     }
     const cp = this.crucible.position;
     this.interactables.push({ id: 'crucible', kind: 'crucible', zone: 'home', anchor: cp.clone().setY(cp.y + 3.3), range: 3.4, sphere: new THREE.Sphere(cp.clone().setY(cp.y + 1.2), 1.8), active: true });
+    const np = this.familiars.nestPosition;
+    this.interactables.push({ id: 'nest', kind: 'nest', zone: 'geyser', anchor: np.clone().setY(np.y + 4.2), range: 3.6, sphere: new THREE.Sphere(np.clone().setY(np.y + 1.8), 1.8), active: false });
     const lh = this.lighthouse.position.clone().add(new THREE.Vector3(0, 3, 0));
     this.interactables.push({ id: 'lighthouse', kind: 'lighthouse', zone: 'sky', anchor: lh.clone().setY(lh.y + 3), range: RANGES.lighthouse, sphere: new THREE.Sphere(lh, 3), active: false });
 
@@ -264,6 +273,7 @@ export class World {
     d = Math.min(d, Math.hypot(x - MAIN_CRYSTAL[0], z - MAIN_CRYSTAL[1]) - 2.8);
     d = Math.min(d, Math.hypot(x - LIGHTHOUSE[0], z - LIGHTHOUSE[1]) - 3.4);
     d = Math.min(d, Math.hypot(x - CRUCIBLE_POS[0], z - CRUCIBLE_POS[1]) - 2.8);
+    d = Math.min(d, Math.hypot(x - NEST_POS[0], z - NEST_POS[1]) - 2.6);
     for (const f of ALTAR_FAMILIES) d = Math.min(d, Math.hypot(x - FAMILIES[f].altar![0], z - FAMILIES[f].altar![1]) - 3.4);
     for (const id of MACHINE_ORDER) {
       const s = SITES[id];
@@ -418,6 +428,7 @@ export class World {
       if (it.kind === 'bridge') it.active = this.bridges.get(it.zone!)!.available;
       if (it.kind === 'lighthouse') it.active = state.zones.sky;
       if (it.kind === 'altar') it.active = state.zones[it.zone!];
+      if (it.kind === 'nest') it.active = state.zones.geyser;
       if (it.kind === 'golden') continue;
     }
 
@@ -513,12 +524,14 @@ export class World {
       return Math.hypot(p.x - a.x, p.z - a.z) - 2.2;
     }
     if (it.kind === 'golden' || it.kind === 'guardian') return Math.hypot(p.x - it.sphere.center.x, p.z - it.sphere.center.z) - 1;
+    if (it.kind === 'nest') return Math.hypot(p.x - this.familiars.nestPosition.x, p.z - this.familiars.nestPosition.z) - 1.5;
     if (it.kind === 'crucible') return Math.hypot(p.x - this.crucible.position.x, p.z - this.crucible.position.z) - 1.8;
     return Math.hypot(p.x - it.anchor.x, p.z - it.anchor.z);
   }
 
   /** World position used by objective beacons. */
-  beaconTarget(kind: 'crystal' | 'site' | 'bridge' | 'lighthouse' | 'altar', key?: string): THREE.Vector3 {
+  beaconTarget(kind: 'crystal' | 'site' | 'bridge' | 'lighthouse' | 'altar' | 'nest', key?: string): THREE.Vector3 {
+    if (kind === 'nest') return this.familiars.nestPosition.clone();
     if (kind === 'altar') return this.altars.get(key as FamilyId)!.position.clone();
     if (kind === 'crystal') return this.crystal.position.clone();
     if (kind === 'site') {
@@ -580,6 +593,7 @@ export class World {
     this.lighthouse.update(dt, t);
     this.crucible.lit = state.fragments > 0 || state.counters.guardians > 0 || state.counters.fusions > 0;
     this.crucible.update(dt, t);
+    this.familiars.update(dt, t, state, this.crystal.position);
     this.beacon.update(t);
     for (const b of this.bridges.values()) b.update(t);
     for (const [f, a] of this.altars) {
@@ -624,7 +638,7 @@ export class World {
   /** Cinematic "island descends" animation used by prestige. */
   async descend(): Promise<void> {
     const objs = this.islandGroup();
-    const all: THREE.Object3D[] = [...objs, ...[...this.altars.values()].map((a) => a.group), this.decor.group, this.zoneAmbience, this.nexus.group, this.crystal.group, this.lighthouse.group, this.crucible.group, this.conveyors.group, ...Object.values(this.sites).map((s) => s.group), ...[...this.bridges.values()].map((b) => b.group)];
+    const all: THREE.Object3D[] = [...objs, ...[...this.altars.values()].map((a) => a.group), this.decor.group, this.zoneAmbience, this.nexus.group, this.crystal.group, this.lighthouse.group, this.crucible.group, this.familiars.group, this.conveyors.group, ...Object.values(this.sites).map((s) => s.group), ...[...this.bridges.values()].map((b) => b.group)];
     const start = all.map((o) => o.position.y);
     all.forEach((o, i) => this.homeY.set(o, start[i]));
     this.rig.shake(0.6);
@@ -642,7 +656,7 @@ export class World {
 
   async rise(): Promise<void> {
     // Everything that went down (plus bridges rebuilt in the meantime) comes back to its resting height.
-    const all: THREE.Object3D[] = [...this.islandGroup(), ...[...this.altars.values()].map((a) => a.group), this.decor.group, this.zoneAmbience, this.nexus.group, this.crystal.group, this.lighthouse.group, this.crucible.group, this.conveyors.group, ...Object.values(this.sites).map((s) => s.group), ...[...this.bridges.values()].map((b) => b.group)];
+    const all: THREE.Object3D[] = [...this.islandGroup(), ...[...this.altars.values()].map((a) => a.group), this.decor.group, this.zoneAmbience, this.nexus.group, this.crystal.group, this.lighthouse.group, this.crucible.group, this.familiars.group, this.conveyors.group, ...Object.values(this.sites).map((s) => s.group), ...[...this.bridges.values()].map((b) => b.group)];
     const targets = all.map((o) => this.homeY.get(o) ?? 0);
     all.forEach((o, i) => (o.position.y = targets[i] - 60));
     await new Promise<void>((resolve) =>

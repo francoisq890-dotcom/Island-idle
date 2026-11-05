@@ -29,7 +29,7 @@ for (const p of profiles) {
   console.log(`\n=== ${p.name} ===`);
   if (verbose) for (const e of r.events) if (!e.what.startsWith('Tirage')) console.log(`  ${formatDuration(e.t).padStart(14)}  ${e.what}`);
   for (const [z, t] of Object.entries(r.zoneTimes)) console.log(`  Zone ${z.padEnd(8)} ouverte à ${formatDuration(t!)}`);
-  console.log(`  Achats: ${r.purchases} · tirages de runes: ${r.rolls} · gardiens: ${r.guardians} · fusions: ${r.fusions} · bonus runes+succès: +${Math.round(r.bonusProd * 100)} % prod`);
+  console.log(`  Achats: ${r.purchases} · tirages de runes: ${r.rolls} · gardiens: ${r.guardians} · fusions: ${r.fusions} · familiers: ${r.final.pets.map((p) => p.rarity[0] + p.level).join(" ")} · bonus runes+succès: +${Math.round(r.bonusProd * 100)} % prod`);
   console.log(`  Plus longue attente (10 premières min): ${formatDuration(r.maxEarlyGap)} (vers ${formatDuration(r.maxEarlyGapAt)})`);
   console.log(`  Plus longue attente (toute la partie):  ${formatDuration(r.maxGap)} (vers ${formatDuration(r.maxGapAt)})`);
   const rates = computeRates(r.final);

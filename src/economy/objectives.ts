@@ -15,6 +15,7 @@ export type ObjectiveTarget =
   | { kind: 'lighthouse' }
   | { kind: 'altar'; family: 'stone' | 'ember' | 'mist' | 'star' }
   | { kind: 'ui'; panel: 'workshop' }
+  | { kind: 'nest' }
   | { kind: 'none' };
 
 export interface Objective {
@@ -136,6 +137,14 @@ export const OBJECTIVES: Objective[] = [
     target: { kind: 'site', machine: 'geyser' },
     progress: m('geyser', 1),
     reward: { lumen: 20 },
+  },
+  {
+    id: 'pet1',
+    text: 'Fais éclore ton premier familier au Nid d’éther',
+    hint: 'Un œuf t’attend au nid, sur l’Îlot des Geysers. Le familier frappera le cristal pour toi.',
+    target: { kind: 'nest' },
+    progress: (s) => [s.pets.length > 0 ? 1 : 0, 1],
+    reward: { lumen: 30 },
   },
   {
     id: 'geyser5',

@@ -705,3 +705,19 @@ table.odds .ef { color: var(--ink-soft); font-size: 14px; }
   .set-row { grid-template-columns: 1fr auto; }
   .set-row .pieces { grid-column: 1 / -1; grid-row: 2; }
 }
+
+/* Nid d'éther ---------------------------------------------------------------- */
+.nest-head { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; margin: 8px 2px 4px; padding: 8px 10px; border-radius: 6px; background: rgba(82,240,255,.12); box-shadow: inset 0 0 0 1px rgba(19,138,166,.3); }
+.nest-head .eggs { display: flex; gap: 10px; align-items: center; }
+.nest-head .eggs > .ico { width: 46px; height: 46px; flex: none; }
+.nest-head .eggs b.eggn { font-family: var(--display); font-size: 24px; color: var(--ether); }
+.nest-btns { display: flex; gap: 10px; align-items: center; }
+.pill-btn.off { opacity: .45; }
+.pet-medal { background: radial-gradient(circle, var(--vellum-hi) 0 60%, transparent 61%), var(--rc); }
+.row.pet .rar { font-size: 12px; font-weight: 800; letter-spacing: .08em; font-variant: small-caps; }
+.row.pet .tag { font-size: 11.5px; font-weight: 800; padding: 0 7px; border-radius: 8px; background: var(--vellum-lo); color: var(--ink-soft); }
+.row.pet .tag.on { background: var(--ether); color: #fff; }
+.row.pet .tag.away { background: var(--violet); color: #fff; }
+.pet-btns { margin-top: 4px; }
+.pill-btn.small { font-size: 13px; padding: 3px 10px; }
+.float.pet { color: #8fd18a; font-size: 15px; }

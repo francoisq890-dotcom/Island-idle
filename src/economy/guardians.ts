@@ -3,12 +3,15 @@ import { GUARDIAN } from '../config/guardians';
 import type { RuneDef } from '../config/runes';
 import { addShards, type Rates } from './economy';
 import { dropWardenRunes } from './runes';
+import { familiarsUnlocked } from './familiars';
+import { PETS } from '../config/familiars';
 import type { GameState } from './state';
 
 export interface GuardianLoot {
   fragments: number;
   shards: number;
   runes: RuneDef[];
+  egg: boolean;
 }
 
 export function guardiansUnlocked(state: GameState): boolean {
@@ -30,6 +33,8 @@ export function defeatGuardian(state: GameState, rates: Rates, seconds: number, 
   addShards(state, shards);
   const runes = dropWardenRunes(state, n, rng);
   state.counters.guardians += 1;
+  const egg = familiarsUnlocked(state) && state.pets.length + state.eggs < PETS.maxOwned && rng() < PETS.guardianEgg;
+  if (egg) state.eggs += 1;
   if (state.counters.guardFast === 0 || seconds < state.counters.guardFast) state.counters.guardFast = Math.max(0.5, seconds);
-  return { fragments, shards, runes };
+  return { fragments, shards, runes, egg };
 }

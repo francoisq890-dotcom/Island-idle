@@ -38,11 +38,14 @@ import { MACHINE_ICON, Panels } from './ui/panels';
 import { Journal } from './ui/journal';
 import { Celebration, RunePanel, runeEffect, statText as statTextFn } from './ui/runes';
 import { FAMILIES, RARITIES, RARITY_INDEX, RUNE_BY_ID, type FamilyId, type RuneDef } from './config/runes';
-import { autoRollAllowed, buyAltarUpgrade, cooldownOf, doRoll, fuse, rollCostOf } from './economy/runes';
+import { autoRollAllowed, buyAltarUpgrade, cooldownOf, doRoll, fuse, luckOf, rollCostOf } from './economy/runes';
 import { EVENTS, between } from './config/events';
 import { CONSTELLATIONS, hasPerk } from './config/constellations';
 import { GoldenCrystal, MeteorField } from './world/events';
 import { Guardian } from './world/guardian';
+import { FamiliarPanel } from './ui/familiars';
+import { buyEgg, familiarsUnlocked, hatch, levelUp, petPower, setPerched } from './economy/familiars';
+import { PET_RARITIES, SPECIES } from './config/familiars';
 import { GUARDIAN } from './config/guardians';
 import { defeatGuardian, guardiansUnlocked } from './economy/guardians';
 import { addLumen, addShards } from './economy/economy';
@@ -156,6 +159,37 @@ export class Game {
     this.celebration = new Celebration(uiRoot);
     this.journal = new Journal(() => this.state, (k) => this.audio.ui(k));
     this.panels.register(this.journal.el);
+    this.petPanel = new FamiliarPanel(
+      {
+        buyEgg: () => this.buyEggAction(),
+        hatch: () => this.hatchAction(),
+        levelUp: (id) => this.petLevelAction(id),
+        togglePerch: (id) => {
+          const p = this.state.pets.find((x) => x.id === id);
+          const ok = !!p && setPerched(this.state, id, !p.perched);
+          if (ok) {
+            this.audio.ui('click');
+            this.markDirty();
+          } else {
+            this.audio.error();
+            this.hud.toast('egg', 'Tous les perchoirs sont pris', 'Fais d’abord descendre un autre familier.');
+          }
+          return ok;
+        },
+        sound: (k) => this.audio.ui(k),
+      },
+      () => this.state,
+      () => this.rates,
+    );
+    this.panels.register(this.petPanel.el);
+    this.world.familiars.onPeck = (pet, at) => {
+      if (!this.started || this.busy) return;
+      const near = this.world.player.position.distanceTo(at) < 26;
+      if (!near) return;
+      this.audio.peck(pet.species);
+      const v = petPower(this.state, pet, this.rates.bonus.pet) * this.rates.click;
+      if (v >= 1) this.hud.float(at.x, at.y + 0.6, at.z, `+${formatNumber(v, 1)}`, 'small pet', 0.9);
+    };
 
     // Random events.
     this.meteors = new MeteorField(this.world.particles);
@@ -242,6 +276,10 @@ export class Game {
         if (this.state.flags.migratedV2 && !this.state.flags.v2Seen) {
           this.state.flags.v2Seen = true;
           this.hud.toast('altar', 'Nouveau : les autels des runes', 'Un autel t’attend sur chaque île. Tire des runes pour des bonus permanents.', 'violet');
+        }
+        if (this.state.flags.migratedV4 && !this.state.flags.v4Seen) {
+          this.state.flags.v4Seen = true;
+          window.setTimeout(() => this.hud.toast('egg', 'Nouveau : les familiers d’éther', 'Un œuf t’attend au Nid, sur l’Îlot des Geysers. Touche N.', 'ether'), 4200);
         }
         if (this.state.flags.migratedV3 && !this.state.flags.v3Seen) {
           this.state.flags.v3Seen = true;
@@ -346,6 +384,7 @@ export class Game {
     this.renderer.setNight(k);
     this.audio.night = k;
     const night = isNight(s);
+    if (this.wasNight !== null && night !== this.wasNight) this.markDirty();
     if (this.wasNight !== null && night !== this.wasNight && this.started && !this.busy) {
       if (night) {
         this.audio.nightFall();
@@ -390,6 +429,7 @@ export class Game {
     }
     if (inp.pressed('KeyM')) this.toggleMute();
     if (inp.pressed('KeyJ')) this.togglePanel(this.journal.el, () => this.journal.refresh());
+    if (inp.pressed('KeyN') && familiarsUnlocked(this.state)) this.togglePanel(this.petPanel.el, () => this.petPanel.refresh());
     if (inp.pressed('KeyR')) this.openRunes(this.near?.kind === 'altar' ? this.near.family! : this.lastFamily);
     if (inp.pressed('KeyP') && this.state.zones.sky) this.panels.showPrestige();
 
@@ -469,6 +509,9 @@ export class Game {
         if (this.panels.open === this.runePanel.el && this.runePanel.family === it.family && fromKey) this.rollRunes(it.family!, false);
         else this.openRunes(it.family!);
         break;
+      case 'nest':
+        this.togglePanel(this.petPanel.el, () => this.petPanel.refresh());
+        break;
       case 'crucible':
         this.openRunes(this.lastFamily);
         this.runePanel.setTab('fuse');
@@ -534,6 +577,7 @@ export class Game {
   }
 
   private phoenixCharges = 0;
+  private petPanel!: FamiliarPanel;
   private guardian!: Guardian;
   private guardianIt!: Interactable;
   private nextGuardian = -1;
@@ -702,6 +746,50 @@ export class Game {
     }
     this.afterProgress();
     return got;
+  }
+
+  // --- Familiars ----------------------------------------------------------------
+
+  private buyEggAction(): boolean {
+    if (!buyEgg(this.state)) {
+      this.audio.error();
+      return false;
+    }
+    this.audio.buy();
+    this.hud.toast('egg', 'Un œuf rejoint le nid', 'Fais-le éclore au Nid d’éther.', 'ether');
+    return true;
+  }
+
+  private hatchAction(): boolean {
+    const pet = hatch(this.state, luckOf(this.state));
+    if (!pet) {
+      this.audio.error();
+      return false;
+    }
+    this.markDirty();
+    const ri = PET_RARITIES.findIndex((r) => r.id === pet.rarity);
+    this.world.familiars.hatchFx();
+    this.audio.hatch(ri);
+    const sp = SPECIES[pet.species];
+    this.hud.toast(pet.species, `${PET_RARITIES[ri].name} : ${sp.name} !`, `${sp.trait}${pet.perched ? ' Il se perche et frappe le cristal.' : ' Tous les perchoirs sont pris : il se repose au nid.'}`, ri >= 3 ? 'gold' : ri >= 2 ? 'violet' : 'ether');
+    if (ri >= 3) {
+      this.audio.runeFanfare(4);
+      this.world.rig.shake(0.4);
+    }
+    this.checkObjectives();
+    this.afterProgress();
+    return true;
+  }
+
+  private petLevelAction(id: number): boolean {
+    if (!levelUp(this.state, id)) {
+      this.audio.error();
+      return false;
+    }
+    this.audio.upgrade();
+    this.markDirty();
+    this.afterProgress();
+    return true;
   }
 
   /** Fuse duplicates at the Creuset runique. */
@@ -874,6 +962,7 @@ export class Game {
       this.celebration.show(bestDef, this.state.runes[bestDef.id]);
       this.audio.runeFanfare(best);
     }
+    if (loot.egg) window.setTimeout(() => this.hud.toast('egg', 'Le gardien gardait un œuf !', 'Il t’attend au Nid d’éther.', 'ether'), 1500);
     if (this.state.counters.guardians === 1) window.setTimeout(() => this.hud.toast('cauldron', 'Le Creuset runique s’allume', 'Près du Nexus : fusionne 5 copies d’une rune avec des fragments pour obtenir la rareté supérieure.', 'violet'), 2500);
     this.afterProgress();
   }
@@ -1136,6 +1225,8 @@ export class Game {
       this.panels.refresh();
       if (this.panels.open === this.runePanel.el) this.runePanel.refresh();
       if (this.panels.open === this.journal.el) this.journal.refresh();
+      if (this.panels.open === this.petPanel.el) this.petPanel.refresh();
+      this.hud.petsBtn.classList.toggle('hide', !familiarsUnlocked(this.state));
       this.hud.runesBtn.classList.toggle('hide', this.state.runeStats.rolls === 0 && !this.state.flags.migratedV2);
       if (s.shards >= 25000 && s.machines.excavator === 0) s.flags.sec_miser = true;
       this.afterProgress();
@@ -1226,6 +1317,10 @@ export class Game {
         pos = this.world.beaconTarget('altar', target.family);
         h = 4.6;
         break;
+      case 'nest':
+        pos = this.world.beaconTarget('nest');
+        h = 5.4;
+        break;
       default:
         if ((target as { kind: string }).kind === 'golden') {
           pos = this.golden.position.clone();
@@ -1250,6 +1345,7 @@ export class Game {
   private actionLabel(it: Interactable): string {
     if (it.kind === 'crystal' || it.kind === 'golden' || it.kind === 'guardian') return 'Frapper';
     if (it.kind === 'crucible') return 'Creuset';
+    if (it.kind === 'nest') return 'Nid';
     if (it.kind === 'altar') return 'Runes';
     if (it.kind === 'site' || it.kind === 'bridge') return 'Construire';
     return 'Phare';
@@ -1283,6 +1379,8 @@ export class Game {
         if (f.nightOnly && !isNight(s)) return `${f.altarName} <span class="cost">endormi · s’éveille dans ${formatDuration(secondsToNight(s))}</span>`;
         return `${this.keyCap()} ${f.altarName} <span class="cost">${costHtml(rollCostOf(s, it.family!), have)} / tirage</span>`;
       }
+      case 'nest':
+        return `${this.keyCap()} Nid d’éther <span class="cost">${s.eggs > 0 ? `${s.eggs} œuf${s.eggs > 1 ? 's' : ''} à faire éclore` : `${s.pets.length} familier${s.pets.length > 1 ? 's' : ''}`}</span>`;
       case 'crucible':
         return `${this.keyCap()} Creuset runique <span class="cost">${ICONS.fragment}${formatNumber(Math.floor(s.fragments))}</span>`;
       case 'guardian':
@@ -1338,6 +1436,11 @@ export class Game {
       }
       case 'golden':
         return `<h3>${ICONS.lumen} Cristal doré</h3><p>Frappe-le ${this.golden.maxHits} fois avant qu’il ne s’éteigne !</p><div class="kv"><span>Coups</span><b>${this.golden.hits} / ${this.golden.maxHits}</b></div><div class="kv"><span>Temps</span><b>${Math.ceil(this.golden.timeLeft)} s</b></div>`;
+      case 'nest':
+        return `<h3>${ICONS.egg} Nid d’éther</h3>
+          <p>Fais éclore des œufs : tes familiers frappent le cristal pour toi, même quand tu ne joues pas.</p>
+          <div class="kv"><span>Œufs</span><b>${s.eggs}</b></div><div class="kv"><span>Familiers</span><b>${s.pets.length}</b></div>
+          <div class="foot">${act('Ouvrir le nid')}</div>`;
       case 'crucible':
         return `<h3>${ICONS.cauldron} Creuset runique</h3>
           <p>Jette 5 copies d’une rune et quelques fragments : il en sort une rune de la rareté supérieure.</p>
@@ -1380,6 +1483,7 @@ export class Game {
     this.hud.muteBtn.addEventListener('click', () => this.toggleMute());
     this.hud.journalBtn.addEventListener('click', () => this.togglePanel(this.journal.el, () => this.journal.refresh()));
     this.hud.runesBtn.addEventListener('click', () => this.openRunes(this.lastFamily));
+    this.hud.petsBtn.addEventListener('click', () => this.togglePanel(this.petPanel.el, () => this.petPanel.refresh()));
     this.hud.prestigeBtn.addEventListener('click', () => {
       this.audio.click();
       this.panels.showPrestige();

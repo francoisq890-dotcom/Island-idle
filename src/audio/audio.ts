@@ -430,6 +430,24 @@ export class Audio {
     this.tone(55, { type: 'sine', attack: 0.5, decay: 3.5, gain: 0.25, glide: 0.5 });
   }
 
+  // --- Familiars --------------------------------------------------------------
+
+  private lastPeck = 0;
+  /** A familiar pecks the crystal: tiny glassy tick, never twice the same. */
+  peck(species: string): void {
+    if (!this.ctx || this.ctx.currentTime - this.lastPeck < 0.08) return;
+    this.lastPeck = this.ctx.currentTime;
+    const base = species === 'owl' ? 76 : species === 'drake' ? 72 : species === 'manta' ? 79 : 84;
+    this.tone(this.midi(base + Math.floor(Math.random() * 3) * 2) * (0.99 + Math.random() * 0.02), { type: 'sine', attack: 0.002, decay: 0.18, gain: 0.025 + Math.random() * 0.01, reverb: 0.5 });
+  }
+
+  /** Egg cracks then a little rising trill. */
+  hatch(rarity: number): void {
+    this.noise({ freq: 3000, q: 1, decay: 0.08, gain: 0.12, type: 'bandpass' });
+    this.noise({ freq: 2400, q: 1, decay: 0.08, gain: 0.12, type: 'bandpass', when: 0.12 });
+    [72, 76, 79, 84, 88].slice(0, 3 + rarity).forEach((n, i) => this.tone(this.midi(n), { type: 'triangle', attack: 0.005, decay: 0.5, gain: 0.05, when: 0.3 + i * 0.08, reverb: 0.8 }));
+  }
+
   // --- Guardians --------------------------------------------------------------
 
   /** Ground rumble and a low crystalline groan. */

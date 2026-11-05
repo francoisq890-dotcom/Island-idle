@@ -22,6 +22,8 @@ import { createInitialState, emptyMachines, type GameState } from './state';
 import { bonusTotals, type BonusTotals } from './bonuses';
 import { hasSpecial, runesAfterPrestige } from './runes';
 import { advanceClock } from './daynight';
+import { perched, petStrikesPerSecond } from './familiars';
+import { PETS, SPECIES } from '../config/familiars';
 import { CONSTELLATIONS, hasPerk } from '../config/constellations';
 
 /** A critical strike multiplies the pickaxe gain by this. */
@@ -41,6 +43,12 @@ export interface MachineRate {
 export interface Rates {
   /** Shards/s produced by machines before refineries take their share. */
   shardsGross: number;
+  /** Shards/s brought by familiars (included in `shards`). */
+  pets: number;
+  /** Familiar strikes per second, in pickaxe strikes. */
+  petStrikes: number;
+  /** Fragments per second found by drakes. */
+  drakeFragments: number;
   /** Shards/s consumed by refineries. */
   refineProcessed: number;
   /** Net shards/s added to the stock. */
@@ -199,12 +207,20 @@ export function computeRates(state: GameState): Rates {
   }
 
   const net = shardsGross - processed;
+  const click = (HARVEST.baseValue * clickMult * pMult + clickPct * shardsGross) * (1 + bonus.click);
+  // Familiars strike the crystal on their own: income = their strikes × the value of a strike.
+  const petStrikes = petStrikesPerSecond(state, bonus.pet);
+  let drakeStrikes = 0;
+  for (const p of perched(state)) if (p.species === 'drake') drakeStrikes += 1 / SPECIES.drake.period;
   return {
     shardsGross,
     refineProcessed: processed,
-    shards: net,
+    shards: net + petStrikes * click,
+    pets: petStrikes * click,
+    petStrikes,
+    drakeFragments: drakeStrikes * PETS.drakeFragment * (1 + bonus.frag),
     lumen,
-    click: (HARVEST.baseValue * clickMult * pMult + clickPct * shardsGross) * (1 + bonus.click),
+    click,
     globalMult,
     prestigeMult: pMult,
     perMachine,
@@ -241,6 +257,7 @@ export function tick(state: GameState, dt: number, rates = computeRates(state)):
   if (dt <= 0) return;
   addShards(state, rates.shards * dt);
   addLumen(state, rates.lumen * dt);
+  if (rates.drakeFragments > 0) state.fragments += rates.drakeFragments * dt;
   state.stats.playSeconds += dt;
   state.stats.runSeconds += dt;
   advanceClock(state, dt);
@@ -316,6 +333,8 @@ export function unlockZone(state: GameState, id: ZoneId): boolean {
   if (!canAfford(state, cost)) return false;
   pay(state, cost);
   state.zones[id] = true;
+  // The Geysers island hosts the Nid d'éther: the first egg is offered.
+  if (id === 'geyser' && state.pets.length === 0 && state.eggs === 0 && state.eggsBought === 0) state.eggs = 1;
   return true;
 }
 

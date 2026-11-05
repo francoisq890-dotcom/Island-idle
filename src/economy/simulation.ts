@@ -11,6 +11,8 @@ import { ALTAR_FAMILIES, FAMILIES, RARITIES, RARITY_INDEX, RUNES, type FamilyId 
 import { GUARDIAN } from '../config/guardians';
 import { defeatGuardian, guardiansUnlocked } from './guardians';
 import { isNight } from './daynight';
+import { buyEgg, eggCost, familiarsUnlocked, hatch, levelCost, levelUp } from './familiars';
+import { PETS } from '../config/familiars';
 import { checkAchievements } from './achievements';
 import {
   addLumen,
@@ -54,6 +56,7 @@ export interface SimResult {
   rolls: number;
   guardians: number;
   fusions: number;
+  pets: number;
   /** Share of production coming from rune + achievement bonuses at the end. */
   bonusProd: number;
   final: GameState;
@@ -69,6 +72,8 @@ export interface SimOptions {
   startState?: GameState;
   /** Disable runes (to measure their impact). */
   noRunes?: boolean;
+  /** Disable familiars. */
+  noPets?: boolean;
   /** Share of event rewards the player actually grabs. */
   eventCatch?: number;
   seed?: number;
@@ -78,7 +83,9 @@ type Candidate =
   | { kind: 'machine'; id: MachineId; cost: Cost }
   | { kind: 'upgrade'; id: string; cost: Cost }
   | { kind: 'zone'; id: ZoneId; cost: Cost }
-  | { kind: 'roll'; id: FamilyId; cost: Cost };
+  | { kind: 'roll'; id: FamilyId; cost: Cost }
+  | { kind: 'egg'; id: 'egg'; cost: Cost }
+  | { kind: 'pet'; id: number; cost: Cost };
 
 /** How many shards one lumen is "worth" to the bot when comparing options. */
 function lumenValue(state: GameState): number {
@@ -97,11 +104,18 @@ function clone(s: GameState): GameState {
   return JSON.parse(JSON.stringify(s));
 }
 
-function candidates(state: GameState, noRunes: boolean, rollReady: boolean): Candidate[] {
+function candidates(state: GameState, noRunes: boolean, rollReady: boolean, noPets = false): Candidate[] {
   const out: Candidate[] = [];
   for (const id of MACHINE_ORDER) if (isMachineAvailable(state, id)) out.push({ kind: 'machine', id, cost: nextMachineCost(state, id) });
   for (const u of visibleUpgrades(state)) out.push({ kind: 'upgrade', id: u.id, cost: u.cost });
   for (const z of ZONE_ORDER) if (canUnlockZone(state, z)) out.push({ kind: 'zone', id: z, cost: ZONES[z].cost });
+  if (!noPets && familiarsUnlocked(state)) {
+    if (state.pets.length + state.eggs < PETS.maxOwned) out.push({ kind: 'egg', id: 'egg', cost: eggCost(state) });
+    for (const p of state.pets) {
+      const c = levelCost(p);
+      if (c && p.perched) out.push({ kind: 'pet', id: p.id, cost: c });
+    }
+  }
   if (!noRunes && rollReady) for (const f of ALTAR_FAMILIES) if (familyUnlocked(state, f) && (!FAMILIES[f].nightOnly || isNight(state))) out.push({ kind: 'roll', id: f, cost: rollCostOf(state, f) });
   return out;
 }
@@ -114,6 +128,10 @@ function preview(state: GameState, c: Candidate): GameState {
   if (c.kind === 'machine') buyMachine(s2, c.id);
   else if (c.kind === 'upgrade') buyUpgrade(s2, c.id);
   else if (c.kind === 'zone') unlockZone(s2, c.id);
+  else if (c.kind === 'egg') {
+    buyEgg(s2);
+    hatch(s2, 1, () => 0.3);
+  } else if (c.kind === 'pet') levelUp(s2, c.id);
   else {
     const p = rarityChances(luckOf(state));
     const bulk = bulkOf(state);
@@ -125,14 +143,14 @@ function preview(state: GameState, c: Candidate): GameState {
   return s2;
 }
 
-function choose(state: GameState, clickRate: number, noRunes: boolean, rollReady: boolean): Candidate | null {
+function choose(state: GameState, clickRate: number, noRunes: boolean, rollReady: boolean, noPets = false): Candidate | null {
   const rates = computeRates(state);
   const lv = lumenValue(state);
   const base = score(rates, lv, clickRate);
   let best: Candidate | null = null;
   let bestT = Infinity;
   const eff: Rates = { ...rates, shards: rates.shards + rates.click * clickRate };
-  for (const c of candidates(state, noRunes, rollReady)) {
+  for (const c of candidates(state, noRunes, rollReady, noPets)) {
     const wait = timeToAfford(state, eff, c.cost);
     if (!isFinite(wait)) continue;
     let t: number;
@@ -180,6 +198,7 @@ export function simulateRun(opts: SimOptions = {}): SimResult {
   const earlyWindow = opts.earlyWindow ?? 600;
   const dt = opts.dt ?? 0.25;
   const noRunes = !!opts.noRunes;
+  const noPets = !!opts.noPets;
   const catchRate = opts.eventCatch ?? 0.75;
   const rng = mulberry32(opts.seed ?? 7);
   const state = opts.startState ? clone(opts.startState) : createInitialState(0);
@@ -202,6 +221,7 @@ export function simulateRun(opts: SimOptions = {}): SimResult {
   let nextGuardian = -1;
   let guardians = 0;
   let fusions = 0;
+  let pets = 0;
   let rolls = 0;
 
   const note = (t: number, what: string) => {
@@ -271,6 +291,9 @@ export function simulateRun(opts: SimOptions = {}): SimResult {
       }
     }
 
+    // Eggs hatch as soon as they are laid.
+    while (!noPets && state.eggs > 0 && hatch(state, luckOf(state), rng)) pets++;
+
     // Tutorial rewards (the bot "walks" instantly).
     state.flags.nearCrystal = true;
     while (objective < OBJECTIVES.length) {
@@ -309,13 +332,15 @@ export function simulateRun(opts: SimOptions = {}): SimResult {
       }
     }
 
-    if (!target || everySecond) target = choose(state, clicking ? cps : 0, noRunes, rollTimer <= 0);
+    if (!target || everySecond) target = choose(state, clicking ? cps : 0, noRunes, rollTimer <= 0, noPets);
     let bought = 0;
     while (target && canAfford(state, target.cost) && bought < 50) {
       let ok = false;
       if (target.kind === 'machine') ok = buyMachine(state, target.id);
       else if (target.kind === 'upgrade') ok = buyUpgrade(state, target.id);
       else if (target.kind === 'zone') ok = unlockZone(state, target.id);
+      else if (target.kind === 'egg') ok = buyEgg(state);
+      else if (target.kind === 'pet') ok = levelUp(state, target.id);
       else if (rollTimer <= 0) {
         ok = doRoll(state, target.id, rng).length > 0;
         if (ok) {
@@ -330,6 +355,10 @@ export function simulateRun(opts: SimOptions = {}): SimResult {
           ? `${MACHINES[target.id].name} #${state.machines[target.id]}`
           : target.kind === 'zone'
             ? `ZONE ${ZONES[target.id].name}`
+            : target.kind === 'egg'
+              ? 'Œuf de familier'
+              : target.kind === 'pet'
+                ? `Familier #${target.id} niv. ${state.pets.find((p) => p.id === target!.id)?.level}`
             : target.kind === 'roll'
               ? `Tirage ${target.id}`
               : `Amélioration ${target.id}`;
@@ -338,7 +367,7 @@ export function simulateRun(opts: SimOptions = {}): SimResult {
       else note(t, label);
       if (target.kind === 'zone') zoneTimes[target.id] = t;
       if (target.kind === 'machine' && firstMachineTimes[target.id] === undefined) firstMachineTimes[target.id] = t;
-      target = choose(state, clicking ? cps : 0, noRunes, rollTimer <= 0);
+      target = choose(state, clicking ? cps : 0, noRunes, rollTimer <= 0, noPets);
     }
 
     if (prestigeReadyAt === null && canPrestige(state)) {
@@ -362,6 +391,7 @@ export function simulateRun(opts: SimOptions = {}): SimResult {
     rolls,
     guardians,
     fusions,
+    pets,
     bonusProd: fr.bonus.prod,
     final: state,
   };

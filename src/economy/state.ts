@@ -64,12 +64,32 @@ export interface GameState {
   fragments: number;
   /** Rolls since the last epic+ / legendary+ (pity, account-wide). */
   pity: { epic: number; legendary: number };
+  /** Ether familiars (kept on prestige). Since save v3. */
+  pets: Pet[];
+  /** Unhatched eggs. */
+  eggs: number;
+  /** Eggs bought with Lumen (drives the egg price). */
+  eggsBought: number;
+  petSerial: number;
+  /** Extra perches from talents / relics. */
+  extraPerches: number;
   /** Game-time clock driving the day/night cycle (seconds). Since save v3. */
   clock: number;
   /** Every rune ever found (the index survives prestige). Since save v3. */
   runeIndex: Record<string, true>;
   /** Total star seeds ever earned (drives the Constellations long-term goal). */
   lifetimeSeeds: number;
+}
+
+export interface Pet {
+  id: number;
+  species: import('../config/familiars').SpeciesId;
+  rarity: import('../config/familiars').PetRarity;
+  level: number;
+  /** Striking the crystal (on a perch). */
+  perched: boolean;
+  /** On an expedition. */
+  away: boolean;
 }
 
 export interface Counters {
@@ -117,7 +137,7 @@ export function emptyCounters(): Counters {
   return { crits: 0, meteors: 0, golden: 0, eventsSeen: 0, bestCombo: 0, bestHit: 0, bestRate: 0, bestIsland: 0, bestGain: 0, jumps: 0, distance: 0, nights: 0, nightRolls: 0, guardians: 0, guardFast: 0, dodges: 0, fusions: 0, pity: 0, eggs: 0, expeditions: 0, longExpeditions: 0, merchant: 0, rifts: 0, talents: 0, pets: 0, petLevel: 0, ascensions: 0, challenges: 0, relics: 0, sets: 0, families: 0, constellations: 0 };
 }
 
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 export function emptyMachines(): Record<MachineId, number> {
   const m = {} as Record<MachineId, number>;
@@ -163,5 +183,10 @@ export function createInitialState(now = Date.now()): GameState {
     lifetimeSeeds: 0,
     runeIndex: {},
     clock: 0,
+    pets: [],
+    eggs: 0,
+    eggsBought: 0,
+    petSerial: 0,
+    extraPerches: 0,
   };
 }
