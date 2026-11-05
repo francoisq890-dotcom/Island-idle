@@ -673,7 +673,12 @@ table.odds .ef { color: var(--ink-soft); font-size: 14px; }
 .bossbar.danger { animation: bbShake .3s linear infinite; }
 .bossbar.danger .bb-hint { color: var(--bad); font-weight: 800; }
 @keyframes bbShake { 25% { margin-left: -2px; } 75% { margin-left: 2px; } }
-@media (max-width: 760px) { .bossbar { top: 64px; } .bb-top { font-size: 16px; } }
+@media (max-width: 760px) {
+  .bossbar { top: auto; bottom: 150px; left: 12px; width: calc(100vw - 100px); transform: translate(0, 30px) scale(.9); padding: 5px 10px 6px; }
+  .bossbar.on { transform: none; }
+  .bb-top { font-size: 16px; }
+  .bb-hint { font-size: 12.5px; }
+}
 
 /* Runes v2: night, pity, Creuset, sets ------------------------------------- */
 .luckline em.night { font-style: normal; font-weight: 800; color: #4b5fb0; margin-left: 4px; }
@@ -812,4 +817,4 @@ table.odds .ef { color: var(--ink-soft); font-size: 14px; }
 @keyframes comboShake { 25% { translate: 1px -1px; } 75% { translate: -1px 1px; } }
 .btn, .seal, .pill-btn, .tcost, .chip { transition: transform .18s cubic-bezier(.2,1.8,.4,1); }
 .btn:active, .pill-btn:active, .chip:active { transform: scale(.9); }
-@media (max-width: 760px) { .combo { right: 8%; top: 36%; } .combo b { font-size: 32px; } }
+@media (max-width: 760px) { .combo { right: auto; left: 14%; top: 50%; } .combo b { font-size: 32px; } }

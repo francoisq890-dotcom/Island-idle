@@ -4,7 +4,7 @@
  * hooks that the game layer wires to the economy, UI and audio.
  */
 import * as THREE from 'three';
-import { MACHINES, MACHINE_ORDER, type MachineId, type ZoneId } from '../config/economy';
+import { MACHINES, MACHINE_ORDER, UPGRADES, type MachineId, type ZoneId } from '../config/economy';
 import { HOME_SEASONS, PALETTE, ZONE_GRASS, type GrassTheme } from '../config/palette';
 import { BRIDGES, ISLANDS, LIGHTHOUSE, MAIN_CRYSTAL, NEXUS, RANGES, SITES, SPAWN, type V2 } from '../config/world';
 import { computeRates, milestoneMult, type Rates } from '../economy/economy';
@@ -21,7 +21,7 @@ import { ALTAR_FAMILIES, FAMILIES, type FamilyId } from '../config/runes';
 import { CameraRig } from './cameraRig';
 import { Conveyors } from './conveyors';
 import { createDecor, type DecorHandle } from './decor';
-import { build, instanced, jitter, makeMaterial, part, tmpObj } from './geom';
+import { build, GLOBAL_TIME, instanced, jitter, makeMaterial, part, tmpObj } from './geom';
 import { Beacon, buildSigns, HarvestCrystal, Lighthouse, Nexus, type SignDef } from './landmarks';
 import { MachineSite } from './machines';
 import { Particles } from './particles';
@@ -104,6 +104,28 @@ export class World {
   hooks: WorldHooks = {};
   private zoneAmbience: THREE.Group;
   private lavaMat = makeMaterial({ emissiveIntensity: 1.2 });
+  private upgradeCount = new Map<MachineId, number>();
+  /** True while the archipelago sinks or rises (loose effects are hidden). */
+  private sinking = false;
+  /** Heat shimmer above the refinery chimneys. */
+  private heat: THREE.Mesh[] = [];
+  private heatMat = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+    uniforms: { uTime: GLOBAL_TIME, uNight: { value: 0 } },
+    vertexShader: /* glsl */ `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: /* glsl */ `
+      uniform float uTime; varying vec2 vUv;
+      void main() {
+        float x = vUv.x - 0.5 + sin(vUv.y * 9.0 - uTime * 3.0) * 0.08 * vUv.y;
+        float col = smoothstep(0.32, 0.0, abs(x));
+        float bands = 0.5 + 0.5 * sin(vUv.y * 22.0 - uTime * 5.5 + sin(vUv.x * 7.0 + uTime) * 1.5);
+        float fade = smoothstep(0.0, 0.15, vUv.y) * smoothstep(1.0, 0.45, vUv.y);
+        gl_FragColor = vec4(vec3(1.0, 0.62, 0.32) * col * bands * fade * 0.16, 1.0);
+      }`,
+  });
 
   constructor(
     private renderer: Renderer,
@@ -178,6 +200,17 @@ export class World {
       site.slots.forEach((s, i) => this.ground.obstacles.push({ x: s.x, z: s.z, r: site.model.radius * 0.9, zone: MACHINES[id].zone, active: () => i < site.visible }));
       this.emitTimers.set(id, site.slots.map(() => Math.random() * 3));
     }
+
+    // Heat haze planes (one per refinery slot, shown with the machine).
+    const heatGeo = new THREE.PlaneGeometry(1.1, 3.2);
+    heatGeo.translate(0, 1.6, 0);
+    this.sites.refinery.slots.forEach(() => {
+      const m = new THREE.Mesh(heatGeo, this.heatMat);
+      m.visible = false;
+      m.renderOrder = 5;
+      this.scene.add(m);
+      this.heat.push(m);
+    });
 
     // Signs.
     const signs: SignDef[] = [];
@@ -419,6 +452,7 @@ export class World {
       if (animate && n > before && n > site.slots.length) site.pulseAll();
       site.open = state.zones[MACHINES[id].zone];
     }
+    for (const id of MACHINE_ORDER) this.upgradeCount.set(id, UPGRADES.filter((u) => state.upgrades[u.id] && u.effects.some((e) => (e.type === 'machine' && e.machine === id) || (id === 'refinery' && (e.type === 'refineThroughput' || e.type === 'refineYield')))).length);
     let prevOpen = true;
     for (const b of BRIDGES) {
       const br = this.bridges.get(b.zone)!;
@@ -618,9 +652,20 @@ export class World {
     }
     for (const id of MACHINE_ORDER) {
       const site = this.sites[id];
-      site.update(t, 1 + site.tier * 0.15);
+      // Machines run faster with their milestones and with each upgrade bought for them.
+      site.update(t, 1 + site.tier * 0.15 + 0.2 * (this.upgradeCount.get(id) ?? 0));
       this.machineEmit(id, site, dt, state);
     }
+    // Heat above the refineries that exist, facing the camera.
+    const ref = this.sites.refinery;
+    this.heat.forEach((m, i) => {
+      const on = i < ref.visible && state.zones.forge && !this.sinking;
+      m.visible = on;
+      if (!on) return;
+      const v = ref.ventOf(i) ?? ref.outletOf(i);
+      m.position.copy(v);
+      m.rotation.y = Math.atan2(this.camera.position.x - v.x, this.camera.position.z - v.z);
+    });
     this.conveyors.update(dt);
     this.particles.update(dt);
     this.player.trail.update(dt);
@@ -652,6 +697,7 @@ export class World {
 
   /** Cinematic "island descends" animation used by prestige. */
   async descend(): Promise<void> {
+    this.sinking = true;
     const objs = this.islandGroup();
     const all: THREE.Object3D[] = [...objs, ...[...this.altars.values()].map((a) => a.group), this.decor.group, this.zoneAmbience, this.nexus.group, this.crystal.group, this.lighthouse.group, this.crucible.group, this.familiars.group, this.dock.group, this.conveyors.group, ...Object.values(this.sites).map((s) => s.group), ...[...this.bridges.values()].map((b) => b.group)];
     const start = all.map((o) => o.position.y);
@@ -671,6 +717,7 @@ export class World {
 
   /** Ascension: the whole archipelago rises into the sky. */
   async ascendUp(): Promise<void> {
+    this.sinking = true;
     const all: THREE.Object3D[] = [...this.islandGroup(), ...[...this.altars.values()].map((a) => a.group), this.decor.group, this.zoneAmbience, this.nexus.group, this.crystal.group, this.lighthouse.group, this.conveyors.group, this.crucible.group, this.familiars.group, this.dock.group, ...Object.values(this.sites).map((s) => s.group), ...[...this.bridges.values()].map((b) => b.group)];
     const start = all.map((o) => o.position.y);
     all.forEach((o, i) => this.homeY.set(o, start[i]));
@@ -686,6 +733,7 @@ export class World {
     await new Promise<void>((resolve) =>
       this.tweens.add(3, (v) => all.forEach((o, i) => (o.position.y = targets[i] - 60 * (1 - v))), { ease: Ease.outCubic, done: resolve }),
     );
+    this.sinking = false;
   }
 
   /** Reset bridges & machines after prestige (no animation). */
