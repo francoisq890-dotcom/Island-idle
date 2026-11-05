@@ -163,7 +163,7 @@ export function deserialize(text: string, now = Date.now()): GameState {
   s.settings.music = Math.min(1, num(set.music, s.settings.music));
   s.settings.muted = set.muted === true;
   s.settings.invertY = set.invertY === true;
-  if (set.quality === 'high' || set.quality === 'low' || set.quality === 'auto') s.settings.quality = set.quality;
+  if (['auto', 'low', 'medium', 'high', 'ultra'].includes(set.quality as string)) s.settings.quality = set.quality as GameState['settings']['quality'];
 
   // v2 fields.
   const runes = obj(raw.runes);

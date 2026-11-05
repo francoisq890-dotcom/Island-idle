@@ -30,7 +30,7 @@ function crystalShard(h: number, r: number, color: number, emit: number, pos: [n
 export class HarvestCrystal {
   readonly group = new THREE.Group();
   readonly mesh: THREE.Mesh;
-  private mat = makeMaterial({ emissiveIntensity: 1.0, roughness: 0.3 });
+  private mat = makeMaterial({ emissiveIntensity: 1.0, roughness: 0.3, shimmer: true });
   private squash = 0;
   private flash = 0;
   private light: THREE.PointLight;

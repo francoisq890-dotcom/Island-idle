@@ -16,12 +16,15 @@ export interface GameStats {
   prestiges: number;
 }
 
+/** Graphics presets; 'auto' starts high and steps down when frames are slow. */
+export type Quality = 'auto' | 'low' | 'medium' | 'high' | 'ultra';
+
 export interface Settings {
   sfx: number;
   music: number;
   muted: boolean;
   /** 'auto' adapts resolution to keep 60 fps. */
-  quality: 'auto' | 'high' | 'low';
+  quality: Quality;
   invertY: boolean;
 }
 

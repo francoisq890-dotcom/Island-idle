@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { ISLANDS, type IslandLayout } from '../config/world';
 import { PALETTE, type GrassTheme } from '../config/palette';
 import { mulberry32 } from '../core/noise';
-import { build, instanced, jitter, makeMaterial, part, tmpObj } from './geom';
+import { build, GLOBAL_TIME, instanced, jitter, makeMaterial, part, tmpObj } from './geom';
 import { islandRadiusAt, islandTopHeight } from './terrain';
 
 export type Exclusion = (x: number, z: number) => number; // returns distance to nearest gameplay feature
@@ -93,7 +93,8 @@ export interface DecorHandle {
 
 export function createDecor(exclusion: Exclusion, themes: Record<string, GrassTheme>): DecorHandle {
   const group = new THREE.Group();
-  const leafMat = makeMaterial({ roughness: 0.85 });
+  const leafMat = makeMaterial({ roughness: 0.85, wind: 0.035 });
+  const grassMat = makeMaterial({ roughness: 0.85, wind: 0.5 });
   const solidMat = makeMaterial({ roughness: 0.95 });
   const flowerMat = makeMaterial({ roughness: 0.6, emissiveIntensity: 1.2 });
   const cloudMat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 1, emissive: 0xffe4d6, emissiveIntensity: 0.12, fog: true, color: 0xf7ece8 });
@@ -103,8 +104,22 @@ export function createDecor(exclusion: Exclusion, themes: Record<string, GrassTh
   const pine = instanced(treePineGeo(), leafMat, MAX_TREES);
   const trunks = instanced(trunkGeo(), solidMat, MAX_TREES * 2);
   const rocks = instanced(rockGeo(5), solidMat, 160);
-  const tufts = instanced(tuftGeo(), leafMat, 900, false);
+  const tufts = instanced(tuftGeo(), grassMat, 900, false);
   const flowers = instanced(flowerGeo(), flowerMat, 500, false);
+  // Clouds breathe and drift up and down (vertex shader, no per-frame CPU work).
+  cloudMat.onBeforeCompile = (sh) => {
+    sh.uniforms.uTime = GLOBAL_TIME;
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nuniform float uTime;')
+      .replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+        vec3 cp = vec3(instanceMatrix[3][0], instanceMatrix[3][1], instanceMatrix[3][2]);
+        float w = sin(uTime * 0.35 + cp.x * 0.04 + cp.z * 0.03);
+        transformed *= 1.0 + 0.05 * sin(uTime * 0.5 + cp.z * 0.07);
+        transformed.y += w * 0.18 + sin(uTime * 0.9 + position.x * 0.9 + cp.x) * 0.05;`,
+      );
+  };
   const hanging = instanced(hangingRockGeo(9), solidMat, 60);
   const floaters = instanced(jitter(new THREE.DodecahedronGeometry(1, 0), 0.4, 77), solidMat, 40);
   floaters.geometry = build([part(floaters.geometry, PALETTE.rock1)]);

@@ -8,8 +8,9 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { PALETTE } from '../config/palette';
-import { GLOBAL_EMIT } from './geom';
+import { GLOBAL_EMIT, GLOBAL_TIME, GLOBAL_WIND } from './geom';
 
 /** Night palette (sky, fog, lights). */
 const NIGHT = {
@@ -57,6 +58,49 @@ const GradeShader = {
   `,
 };
 
+/**
+ * Sun (or moon) shafts: a cheap screen-space radial blur of the bright pixels
+ * towards the light's position on screen, added back with a warm tint.
+ */
+const RaysShader = {
+  uniforms: {
+    tDiffuse: { value: null as THREE.Texture | null },
+    uSun: { value: new THREE.Vector2(0.5, 0.5) },
+    uStrength: { value: 0 },
+    uTint: { value: new THREE.Color(1, 0.85, 0.65) },
+  },
+  vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+  `,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    uniform vec2 uSun;
+    uniform float uStrength;
+    uniform vec3 uTint;
+    varying vec2 vUv;
+    void main() {
+      vec4 base = texture2D(tDiffuse, vUv);
+      if (uStrength <= 0.001) { gl_FragColor = base; return; }
+      vec2 d = (uSun - vUv) / 24.0 * 0.9;
+      vec2 p = vUv;
+      float decay = 1.0;
+      vec3 acc = vec3(0.0);
+      for (int i = 0; i < 24; i++) {
+        p += d;
+        vec3 c = texture2D(tDiffuse, p).rgb;
+        float l = max(0.0, dot(c, vec3(0.299, 0.587, 0.114)) - 0.72);
+        acc += c * l * decay;
+        decay *= 0.93;
+      }
+      float fall = smoothstep(1.2, 0.0, distance(vUv, uSun));
+      gl_FragColor = vec4(base.rgb + acc * uTint * uStrength * fall * 0.11, base.a);
+    }
+  `,
+};
+
+export type QualityLevel = 'low' | 'medium' | 'high' | 'ultra';
+
 export class Renderer {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
@@ -66,12 +110,19 @@ export class Renderer {
   private composer: EffectComposer;
   private bloom: UnrealBloomPass;
   private grade: ShaderPass;
+  private rays: ShaderPass;
+  private gtao: GTAOPass;
+  /** Preset actually in use (Automatique moves between them). */
+  level: QualityLevel = 'high';
+  private sunDir = new THREE.Vector3(-0.55, 0.32, 0.4).normalize();
+  private moonDir = new THREE.Vector3(0.45, 0.42, -0.62).normalize();
+  private tmpV = new THREE.Vector3();
   private sky: THREE.Mesh;
   private pixelRatio: number;
   private maxPixelRatio: number;
   private frameTimes: number[] = [];
   private adaptCooldown = 3;
-  quality: 'auto' | 'high' | 'low' = 'auto';
+  quality: 'auto' | QualityLevel = 'auto';
   private night = 0;
   private skyTime = 0;
   private dayColors = { fog: new THREE.Color(PALETTE.fog), sun: new THREE.Color(0xffdcb0), hemiSky: new THREE.Color(0xc4ccff), hemiGround: new THREE.Color(0xd9967a), bg: new THREE.Color(PALETTE.skyHorizon) };
@@ -126,8 +177,16 @@ export class Renderer {
     const rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: 4 });
     this.composer = new EffectComposer(this.renderer, rt);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this.gtao = new GTAOPass(this.scene, this.camera, size.x, size.y);
+    this.gtao.output = GTAOPass.OUTPUT.Default;
+    this.gtao.blendIntensity = 0.65;
+    this.gtao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1.6, thickness: 1.2, scale: 1 });
+    this.gtao.enabled = false;
+    this.composer.addPass(this.gtao);
     this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.55, 0.5, 0.95);
     this.composer.addPass(this.bloom);
+    this.rays = new ShaderPass(RaysShader);
+    this.composer.addPass(this.rays);
     this.grade = new ShaderPass(GradeShader);
     this.composer.addPass(this.grade);
     this.composer.addPass(new OutputPass());
@@ -271,14 +330,36 @@ export class Renderer {
     this.composer.setSize(w, h);
   }
 
-  setQuality(q: 'auto' | 'high' | 'low'): void {
+  setQuality(q: 'auto' | QualityLevel): void {
     this.quality = q;
-    if (q === 'high') this.pixelRatio = this.maxPixelRatio;
-    else if (q === 'low') this.pixelRatio = Math.min(1, this.maxPixelRatio) * 0.75;
-    else this.pixelRatio = Math.min(this.maxPixelRatio, 1.5);
-    this.renderer.shadowMap.enabled = q !== 'low';
-    this.sun.castShadow = q !== 'low';
-    this.bloom.enabled = q !== 'low';
+    this.applyLevel(q === 'auto' ? 'high' : q);
+  }
+
+  /**
+   * Presets:
+   *  - low (Économie): 0.75 px ratio, no shadows, no bloom, no wind;
+   *  - medium: 1× pixels, 1024 shadows, bloom;
+   *  - high: up to 1.5× pixels, 2048 shadows, bloom, light shafts;
+   *  - ultra: full device ratio, 4096 soft shadows, light shafts, ambient occlusion.
+   */
+  private applyLevel(l: QualityLevel): void {
+    this.level = l;
+    const pr = { low: Math.min(1, this.maxPixelRatio) * 0.75, medium: Math.min(1, this.maxPixelRatio), high: Math.min(this.maxPixelRatio, 1.5), ultra: this.maxPixelRatio }[l];
+    this.pixelRatio = pr;
+    const shadows = l !== 'low';
+    this.renderer.shadowMap.enabled = shadows;
+    this.sun.castShadow = shadows;
+    const size = l === 'ultra' ? 4096 : l === 'high' ? 2048 : 1024;
+    if (this.sun.shadow.mapSize.x !== size) {
+      this.sun.shadow.mapSize.set(size, size);
+      this.sun.shadow.map?.dispose();
+      this.sun.shadow.map = null;
+    }
+    this.renderer.shadowMap.type = l === 'ultra' ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+    this.bloom.enabled = l !== 'low';
+    this.rays.enabled = l === 'high' || l === 'ultra';
+    this.gtao.enabled = l === 'ultra';
+    GLOBAL_WIND.value = l === 'low' ? 0 : 1;
     this.resize();
   }
 
@@ -287,6 +368,19 @@ export class Renderer {
 
   render(dt: number): void {
     this.skyTime += dt;
+    GLOBAL_TIME.value = this.skyTime;
+    if (this.rays.enabled) {
+      // Screen position of the sun (day) or the moon (night); fade out when behind the camera.
+      const k = this.night;
+      const dir = this.tmpV.copy(this.sunDir).lerp(this.moonDir, k).normalize();
+      const p = dir.multiplyScalar(400).add(this.camera.position).project(this.camera);
+      const facing = p.z < 1 ? 1 : 0;
+      const u = this.rays.uniforms;
+      u.uSun.value.set(p.x * 0.5 + 0.5, p.y * 0.5 + 0.5);
+      const onScreen = Math.max(0, 1 - Math.max(0, Math.abs(p.x) - 1) * 0.8) * Math.max(0, 1 - Math.max(0, Math.abs(p.y) - 1) * 0.8);
+      u.uStrength.value = facing * onScreen * (1 - k * 0.6);
+      (u.uTint.value as THREE.Color).setRGB(1 - 0.35 * k, 0.85 - 0.05 * k, 0.65 + 0.35 * k);
+    }
     (this.sky.material as THREE.ShaderMaterial).uniforms.uTime.value = this.skyTime;
     this.renderer.info.autoReset = false;
     this.renderer.info.reset();
@@ -305,7 +399,14 @@ export class Renderer {
     if (this.adaptCooldown > 0 || this.frameTimes.length < 60) return;
     const sorted = [...this.frameTimes].sort((a, b) => a - b);
     const median = sorted[Math.floor(sorted.length / 2)];
-    if (median > 1 / 50 && this.pixelRatio > 0.6) {
+    if (median > 1 / 40 && this.pixelRatio <= 0.75 && this.level !== 'low') {
+      // Still slow at the lowest resolution: drop a whole preset.
+      this.applyLevel(this.level === 'ultra' ? 'high' : this.level === 'high' ? 'medium' : 'low');
+      this.pixelRatio = Math.max(0.6, this.pixelRatio * 0.8);
+      this.resize();
+      this.adaptCooldown = 4;
+      this.frameTimes.length = 0;
+    } else if (median > 1 / 50 && this.pixelRatio > 0.6) {
       this.pixelRatio = Math.max(0.6, this.pixelRatio - 0.15);
       this.resize();
       this.adaptCooldown = 2.5;

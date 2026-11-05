@@ -395,7 +395,7 @@ export class Panels {
         <div class="menu-list">
           <div class="menu-row"><span>Effets sonores</span><input type="range" min="0" max="1" step="0.05" data-set="sfx"></div>
           <div class="menu-row"><span>Musique d’ambiance</span><input type="range" min="0" max="1" step="0.05" data-set="music"></div>
-          <div class="menu-row"><span>Qualité graphique</span><select data-set="quality"><option value="auto">Automatique</option><option value="high">Haute</option><option value="low">Économie</option></select></div>
+          <div class="menu-row"><span>Qualité graphique</span><select data-set="quality"><option value="auto">Automatique</option><option value="ultra">Ultra</option><option value="high">Haute</option><option value="medium">Moyenne</option><option value="low">Économie</option></select></div>
           <div class="menu-row"><span>Inverser l’axe vertical</span><input type="checkbox" data-set="invertY"></div>
         </div>
         <div class="section-title">Sauvegarde</div>
@@ -464,7 +464,7 @@ export class Panels {
         const k = inp.dataset.set!;
         if (k === 'sfx') s.sfx = Number(inp.value);
         if (k === 'music') s.music = Number(inp.value);
-        if (k === 'quality') s.quality = inp.value as 'auto' | 'high' | 'low';
+        if (k === 'quality') s.quality = inp.value as GameState['settings']['quality'];
         if (k === 'invertY') s.invertY = (inp as HTMLInputElement).checked;
         this.actions.settingsChanged();
       });
