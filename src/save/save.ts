@@ -8,6 +8,7 @@
 import { MACHINE_ORDER, UPGRADES, ZONE_ORDER } from '../config/economy';
 import { FAMILY_ORDER, RUNES, type FamilyId } from '../config/runes';
 import { ACHIEVEMENTS } from '../config/achievements';
+import { TALENTS } from '../config/talents';
 import { PET_RARITIES, PETS, SPECIES_ORDER, type PetRarity, type SpeciesId } from '../config/familiars';
 import { createInitialState, SAVE_VERSION, type GameState } from '../economy/state';
 
@@ -203,6 +204,13 @@ export function deserialize(text: string, now = Date.now()): GameState {
   s.eggsBought = Math.floor(num(raw.eggsBought, 0));
   s.petSerial = Math.max(Math.floor(num(raw.petSerial, 0)), ...s.pets.map((p) => p.id), 0);
   s.extraPerches = Math.floor(num(raw.extraPerches, 0));
+  const tal = obj(raw.talents);
+  for (const t of TALENTS) {
+    const l = Math.min(t.max, Math.floor(num(tal[t.id], 0)));
+    if (l > 0) s.talents[t.id] = l;
+  }
+  s.seedsPlanted = Math.min(s.seeds, Math.floor(num(raw.seedsPlanted, 0)));
+  s.autoBuy = raw.autoBuy === true;
   const pity = obj(raw.pity);
   s.pity = { epic: Math.floor(num(pity.epic, 0)), legendary: Math.floor(num(pity.legendary, 0)) };
 

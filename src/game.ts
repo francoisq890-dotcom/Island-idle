@@ -46,6 +46,9 @@ import { Guardian } from './world/guardian';
 import { FamiliarPanel } from './ui/familiars';
 import { buyEgg, familiarsUnlocked, hatch, levelUp, petPower, setPerched } from './economy/familiars';
 import { PET_RARITIES, SPECIES } from './config/familiars';
+import { TalentPanel } from './ui/talents';
+import { autoBuyStep, canPlant, guardianBonusTime, pickPath, plant, respec, seedsFree, talentsUnlocked } from './economy/talents';
+import { TALENT_BY_ID, TALENTS } from './config/talents';
 import { GUARDIAN } from './config/guardians';
 import { defeatGuardian, guardiansUnlocked } from './economy/guardians';
 import { addLumen, addShards } from './economy/economy';
@@ -130,6 +133,7 @@ export class Game {
         unlockZone: (id) => this.unlockZone(id),
         goTo: (kind, key) => this.goTo(kind, key),
         prestige: () => void this.prestige(),
+        openGarden: () => this.openGarden(),
         exportSave: () => exportSave(this.snapshot()),
         importSave: (t) => this.importSave(t),
         reset: () => this.hardReset(),
@@ -182,6 +186,27 @@ export class Game {
       () => this.rates,
     );
     this.panels.register(this.petPanel.el);
+    this.talentPanel = new TalentPanel(
+      {
+        plant: (id) => this.plantTalent(id),
+        respec: () => {
+          const ok = respec(this.state);
+          if (ok) {
+            this.audio.ui('tab');
+            this.markDirty();
+            this.hud.toast('seed', 'Jardin replanté', 'Toutes tes graines sont de nouveau libres.', 'violet');
+          } else this.audio.error();
+          return ok;
+        },
+        toggleAutoBuy: () => {
+          this.state.autoBuy = !this.state.autoBuy;
+          this.audio.ui('click');
+        },
+        sound: (k) => this.audio.ui(k),
+      },
+      () => this.state,
+    );
+    this.panels.register(this.talentPanel.el);
     this.world.familiars.onPeck = (pet, at) => {
       if (!this.started || this.busy) return;
       const near = this.world.player.position.distanceTo(at) < 26;
@@ -333,6 +358,28 @@ export class Game {
     // Economy.
     tick(this.state, dt, this.rates);
     this.updateDayNight();
+    this.autoBuyTimer -= dt;
+    if (this.autoBuyTimer <= 0 && this.started && !this.busy) {
+      this.autoBuyTimer = 0.5;
+      const before = { ...this.state.machines };
+      const got = autoBuyStep(
+        this.state,
+        (id) => {
+          const n = this.state.machines[id];
+          const pm = this.rates.perMachine[id];
+          return n > 0 ? (pm.shards + pm.lumen * 25) / n : 0;
+        },
+        (id) => { const c = nextMachineCost(this.state, id); return (c.shards ?? 0) + (c.lumen ?? 0) * 25; },
+        (id) => buyMachine(this.state, id),
+      );
+      if (got) {
+        this.markDirty();
+        const { spawned } = this.world.sync(this.state, this.rates, true);
+        spawned.slice(-1).forEach((sp) => this.world.spawnFx(sp.machine, sp.index));
+        for (const m of MILESTONES) if (before[got] < m && this.state.machines[got] >= m) this.hud.toast(MACHINE_ICON[got], `Palier ${m} atteint !`, `${MACHINES[got].plural} : production ×2`, 'gold');
+        this.afterProgress();
+      }
+    }
     this.rollTimer = Math.max(0, this.rollTimer - dt);
     if (this.started && !this.busy && this.state.altar.auto && this.state.runeAuto && this.rollTimer <= 0) {
       this.rollTimer = cooldownOf(this.state);
@@ -429,6 +476,7 @@ export class Game {
     }
     if (inp.pressed('KeyM')) this.toggleMute();
     if (inp.pressed('KeyJ')) this.togglePanel(this.journal.el, () => this.journal.refresh());
+    if (inp.pressed('KeyT') && talentsUnlocked(this.state)) this.openGarden(true);
     if (inp.pressed('KeyN') && familiarsUnlocked(this.state)) this.togglePanel(this.petPanel.el, () => this.petPanel.refresh());
     if (inp.pressed('KeyR')) this.openRunes(this.near?.kind === 'altar' ? this.near.family! : this.lastFamily);
     if (inp.pressed('KeyP') && this.state.zones.sky) this.panels.showPrestige();
@@ -538,6 +586,16 @@ export class Game {
     this.lastHitTime = this.time;
     const n = this.combo;
     if (n > this.state.counters.bestCombo) this.state.counters.bestCombo = n;
+    // Voie de la Pioche: every 25 chained strikes, a wave of shards worth 10 strikes.
+    if (pickPath(this.state) && n % 25 === 0) {
+      const v = this.rates.click * 10;
+      addShards(this.state, v);
+      const hp = this.world.impactPoint();
+      this.world.particles.sparks(hp, { count: 90, color: PALETTE.crystal, speed: 10, life: 1.2, size: 0.12, up: 5 });
+      this.world.rig.shake(0.5);
+      this.audio.milestone();
+      this.hud.float(hp.x, hp.y + 2.6, hp.z, `Onde ! +${formatNumber(v)}${ICONS.shard}`, 'huge', 1.6);
+    }
     if (n >= 5 && n % 5 === 0) {
       const hp = this.world.impactPoint();
       const big = n >= 50 ? 'huge' : n >= 20 ? 'big' : '';
@@ -556,7 +614,8 @@ export class Game {
     this.world.player.requestStrike(this.world.crystal.position, () => {
       const forced = this.rates.phoenix && this.phoenixCharges > 0;
       if (forced) this.phoenixCharges--;
-      const { value: v, crit } = harvestEx(this.state, this.rates, Math.random, { forceCrit: forced });
+      const streak = 1 + Math.min(this.rates.streakCap, this.combo * 0.01);
+      const { value: v, crit } = harvestEx(this.state, this.rates, Math.random, { forceCrit: forced, scale: streak });
       if (crit && !forced && this.rates.phoenix) {
         this.phoenixCharges = 3;
         this.world.particles.sparks(this.world.impactPoint(), { count: 40, color: 0xff7a3d, speed: 7, life: 0.9, size: 0.1, up: 4 });
@@ -578,6 +637,8 @@ export class Game {
 
   private phoenixCharges = 0;
   private petPanel!: FamiliarPanel;
+  private talentPanel!: TalentPanel;
+  private autoBuyTimer = 0;
   private guardian!: Guardian;
   private guardianIt!: Interactable;
   private nextGuardian = -1;
@@ -748,6 +809,35 @@ export class Game {
     return got;
   }
 
+  // --- Talents -------------------------------------------------------------------
+
+  private openGarden(toggle = false): void {
+    if (!talentsUnlocked(this.state)) return;
+    if (toggle && this.panels.open === this.talentPanel.el) return this.panels.close();
+    this.talentPanel.refresh();
+    this.panels.show(this.talentPanel.el);
+  }
+
+  private plantTalent(id: string): boolean {
+    if (!plant(this.state, id)) {
+      this.audio.error();
+      return false;
+    }
+    const def = TALENT_BY_ID.get(id)!;
+    this.markDirty();
+    this.audio.upgrade();
+    this.hud.toast('seed', `${def.path ? 'Voie choisie' : 'Talent planté'} : ${def.name}`, def.desc, 'violet');
+    const lp = this.world.lighthouse.position;
+    if (this.world.player.position.distanceTo(lp) < 30) this.world.particles.sparks(lp.clone().setY(lp.y + 1), { count: 30, color: PALETTE.seed, speed: 4, life: 1, size: 0.08, up: 3 });
+    if (id === 'foreman') {
+      this.state.autoBuy = true;
+      this.hud.toast('hammer', 'Le Contremaître prend son poste', 'Il achète tout seul les machines déjà posées, sans jamais dépenser plus de la moitié de tes éclats.', 'gold');
+    }
+    this.checkObjectives();
+    this.afterProgress();
+    return true;
+  }
+
   // --- Familiars ----------------------------------------------------------------
 
   private buyEggAction(): boolean {
@@ -795,7 +885,7 @@ export class Game {
   /** Fuse duplicates at the Creuset runique. */
   private fuseRune(id: string): boolean {
     const def = RUNE_BY_ID.get(id);
-    const out = def ? fuse(this.state, def, 1) : null;
+    const out = def ? fuse(this.state, def) : null;
     if (!out) {
       this.audio.error();
       return false;
@@ -906,7 +996,7 @@ export class Game {
     const spot = this.freeSpots(1, 5, 12, 2.2)[0] ?? this.freeSpots(1, 4, 14, 1.4)[0];
     if (!spot) return;
     this.nextGuardian = between(GUARDIAN.every);
-    this.guardian.spawn(spot, this.world.player.position, GUARDIAN.hp, GUARDIAN.time);
+    this.guardian.spawn(spot, this.world.player.position, GUARDIAN.hp, GUARDIAN.time + guardianBonusTime(this.state));
     this.guardianIt.active = true;
     this.fightDodges = 0;
     this.audio.guardianAppear();
@@ -1227,6 +1317,10 @@ export class Game {
       if (this.panels.open === this.journal.el) this.journal.refresh();
       if (this.panels.open === this.petPanel.el) this.petPanel.refresh();
       this.hud.petsBtn.classList.toggle('hide', !familiarsUnlocked(this.state));
+      this.hud.gardenBtn.classList.toggle('hide', !talentsUnlocked(this.state));
+      this.hud.gardenBtn.classList.toggle('glow', seedsFree(this.state) > 0 && TALENTS.some((t) => canPlant(this.state, t)));
+      this.world.lighthouse.setGarden(Object.values(this.state.talents).reduce((a, b) => a + b, 0));
+      if (this.panels.open === this.talentPanel.el) this.talentPanel.refresh();
       this.hud.runesBtn.classList.toggle('hide', this.state.runeStats.rolls === 0 && !this.state.flags.migratedV2);
       if (s.shards >= 25000 && s.machines.excavator === 0) s.flags.sec_miser = true;
       this.afterProgress();
@@ -1483,6 +1577,7 @@ export class Game {
     this.hud.muteBtn.addEventListener('click', () => this.toggleMute());
     this.hud.journalBtn.addEventListener('click', () => this.togglePanel(this.journal.el, () => this.journal.refresh()));
     this.hud.runesBtn.addEventListener('click', () => this.openRunes(this.lastFamily));
+    this.hud.gardenBtn.addEventListener('click', () => this.openGarden(true));
     this.hud.petsBtn.addEventListener('click', () => this.togglePanel(this.petPanel.el, () => this.petPanel.refresh()));
     this.hud.prestigeBtn.addEventListener('click', () => {
       this.audio.click();

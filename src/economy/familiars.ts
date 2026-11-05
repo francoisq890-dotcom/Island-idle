@@ -2,6 +2,7 @@
 import { PET_RARITIES, PETS, SPECIES, SPECIES_ORDER, type PetRarity, type SpeciesId } from '../config/familiars';
 import type { Cost } from '../config/economy';
 import { isNight } from './daynight';
+import { talentPerches } from './talents';
 import type { GameState, Pet } from './state';
 
 export function familiarsUnlocked(state: GameState): boolean {
@@ -20,7 +21,7 @@ export function petPower(state: GameState, p: Pet, petBonus = 0): number {
 }
 
 export function perchCount(state: GameState): number {
-  return PETS.perches + state.extraPerches;
+  return PETS.perches + state.extraPerches + talentPerches(state);
 }
 
 export function perched(state: GameState): Pet[] {

@@ -22,6 +22,7 @@ import { createInitialState, emptyMachines, type GameState } from './state';
 import { bonusTotals, type BonusTotals } from './bonuses';
 import { hasSpecial, runesAfterPrestige } from './runes';
 import { advanceClock } from './daynight';
+import { pickPath, streakCap, tlv } from './talents';
 import { perched, petStrikesPerSecond } from './familiars';
 import { PETS, SPECIES } from '../config/familiars';
 import { CONSTELLATIONS, hasPerk } from '../config/constellations';
@@ -72,6 +73,8 @@ export interface Rates {
   phoenix: boolean;
   /** Multiplier on fragments gained. */
   fragMult: number;
+  /** Série ardente: max bonus from a strike streak (+1 % per chained strike). */
+  streakCap: number;
 }
 
 const UPGRADE_BY_ID = new Map(UPGRADES.map((u) => [u.id, u]));
@@ -207,7 +210,7 @@ export function computeRates(state: GameState): Rates {
   }
 
   const net = shardsGross - processed;
-  const click = (HARVEST.baseValue * clickMult * pMult + clickPct * shardsGross) * (1 + bonus.click);
+  const click = (HARVEST.baseValue * clickMult * pMult + clickPct * shardsGross) * (1 + bonus.click) * (pickPath(state) ? 2 : 1);
   // Familiars strike the crystal on their own: income = their strikes × the value of a strike.
   const petStrikes = petStrikesPerSecond(state, bonus.pet);
   let drakeStrikes = 0;
@@ -233,6 +236,7 @@ export function computeRates(state: GameState): Rates {
     echo: hasSpecial(state, 'echo'),
     phoenix: hasSpecial(state, 'phoenix'),
     fragMult: 1 + bonus.frag,
+    streakCap: streakCap(state),
   };
 }
 
@@ -387,6 +391,11 @@ export function doPrestige(state: GameState): number {
   if (hasPerk(ls, 'drills5')) state.machines.drill = 5;
   if (hasPerk(ls, 'bridgeForge')) state.zones.forge = true;
   if (hasPerk(ls, 'altarLuck')) state.altar.luck = 5;
+  const f = tlv(state, 'founder');
+  if (f > 0) {
+    state.machines.drill += 10 * f;
+    state.machines.excavator += 5 * f;
+  }
   if (hasPerk(ls, 'picks')) {
     state.upgrades.pick1 = true;
     state.upgrades.pick2 = true;

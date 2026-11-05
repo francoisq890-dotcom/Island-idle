@@ -28,6 +28,7 @@ export interface PanelActions {
   unlockZone(id: ZoneId): void;
   goTo(kind: 'site' | 'bridge', key: string): void;
   prestige(): void;
+  openGarden(): void;
   exportSave(): string;
   importSave(text: string): string | null;
   reset(): void;
@@ -523,12 +524,13 @@ export class Panels {
        }
        <div class="compare">
          <div class="lose"><h4>Tu perds</h4>Éclats et Lumen<br>Machines et améliorations<br>Ponts<br>Runes communes à épiques</div>
-         <div class="keep"><h4>Tu gardes</h4>Graines d’étoile (+${Math.round(PRESTIGE.bonusPerSeed * 100)} % chacune)<br>Runes légendaires et plus<br>Succès et statistiques${extraKeep}</div>
+         <div class="keep"><h4>Tu gardes</h4>Graines d’étoile (+${Math.round(PRESTIGE.bonusPerSeed * 100)} % chacune)<br>Talents, familiers, fragments<br>Runes légendaires et plus<br>Succès et statistiques${extraKeep}</div>
        </div>
        <p class="note">Plus tu récoltes avant de descendre, plus tu gagnes de graines.</p>
-       <div class="row-btns"><button class="pill-btn" data-act="no">Pas encore</button><button class="pill-btn violet" data-act="yes" ${ready ? '' : 'disabled'}>Faire descendre l’île</button></div>`,
+       <div class="row-btns">${s.seeds > 0 ? '<button class="pill-btn" data-act="garden">Jardin d’étoiles</button>' : ''}<button class="pill-btn" data-act="no">Pas encore</button><button class="pill-btn violet" data-act="yes" ${ready ? '' : 'disabled'}>Faire descendre l’île</button></div>`,
     );
     this.prestigeModal.querySelector('[data-act="no"]')!.addEventListener('click', () => this.close());
+    this.prestigeModal.querySelector('[data-act="garden"]')?.addEventListener('click', () => this.actions.openGarden());
     this.prestigeModal.querySelector('[data-act="yes"]')!.addEventListener('click', () => {
       this.close();
       this.actions.prestige();

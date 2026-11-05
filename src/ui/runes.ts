@@ -3,6 +3,7 @@
  */
 import { FAMILIES, FAMILY_ORDER, FUSE, PITY, RARITIES, RARITY_INDEX, RUNE_BY_ID, RUNE_SETS, RUNES, STAT_CAP, STAT_LABEL, type FamilyId, type RuneDef, type RuneStat } from '../config/runes';
 import { isNight, secondsToNight } from '../economy/daynight';
+import { fuseMult, pityMult } from '../economy/talents';
 import type { Rates } from '../economy/economy';
 import { formatDuration, formatNumber } from '../economy/format';
 import { activeSets, altarLevel, altarUpgrade, altarUpgradeCost, bulkOf, canFuse, cooldownOf, familyUnlocked, fuseCost, fuseResult, luckOf, oddsLabel, rarityChances, rollCostOf, runesOf, setComplete, setProgress, stacked } from '../economy/runes';
@@ -259,8 +260,9 @@ export class RunePanel {
     (this.body.querySelector('[data-auto]') as HTMLInputElement).checked = s.runeAuto === this.family;
 
     const night = isNight(s);
-    const pityEpic = Math.max(1, PITY.epic - s.pity.epic);
-    const pityLeg = Math.max(1, PITY.legendary - s.pity.legendary);
+    const pm = pityMult(s);
+    const pityEpic = Math.max(1, Math.ceil(PITY.epic * pm) - s.pity.epic);
+    const pityLeg = Math.max(1, Math.ceil(PITY.legendary * pm) - s.pity.legendary);
     const line = `<span>${ICONS.clover} Chance <b>×${luck.toFixed(2)}</b>${night ? ` <em class="night">${ICONS.moon} nuit ×1,5</em>` : ''}</span><span>${ICONS.rune} Charge <b>${bulk}</b></span><span>${ICONS.bolt} Cadence <b>${cooldownOf(s).toFixed(2)} s</b></span>
       <span class="pity" title="Garantie de l’autel : après ${PITY.epic} tirages sans rune épique (ou mieux), la suivante est épique ; après ${PITY.legendary} sans légendaire, la suivante est légendaire.">Garantie : épique dans <b>${pityEpic}</b> · légendaire dans <b>${formatNumber(pityLeg)}</b></span>`;
     const ll = this.body.querySelector('.luckline')!;
@@ -323,7 +325,7 @@ export class RunePanel {
   /** Creuset runique: fuse duplicates into the next rarity. */
   private fuseHtml(): string {
     const s = this.getState();
-    const fm = 1;
+    const fm = fuseMult(s);
     const owned = RUNES.filter((r) => (s.runes[r.id] ?? 0) > 0 && fuseResult(r));
     owned.sort((a, b) => Number(canFuse(s, b, fm)) - Number(canFuse(s, a, fm)) || RARITY_INDEX[b.rarity] - RARITY_INDEX[a.rarity]);
     const rows = owned

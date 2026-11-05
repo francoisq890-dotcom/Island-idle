@@ -252,6 +252,53 @@ export class Lighthouse {
     this.group.add(this.stars);
   }
 
+  /** Star-flowers of the Jardin d'étoiles: one per talent level, around the base. */
+  private flowers: THREE.InstancedMesh | null = null;
+  private flowerN = 0;
+  private flowerGrow: number[] = [];
+  private gardenReady = false;
+
+  setGarden(n: number): void {
+    const MAX = 40;
+    if (!this.flowers) {
+      const geo = build([
+        part(new THREE.CylinderGeometry(0.03, 0.04, 0.5, 4), 0x7fb36a, [0, 0.25, 0]),
+        part(new THREE.ConeGeometry(0.08, 0.14, 4), 0x7fb36a, [0.08, 0.2, 0], { rot: [0, 0, -1] }),
+        part(new THREE.OctahedronGeometry(0.13, 0), PALETTE.seed, [0, 0.58, 0], { emit: 1.4, scale: [1, 0.7, 1] }),
+        part(new THREE.OctahedronGeometry(0.06, 0), 0xfff4d6, [0, 0.62, 0.05], { emit: 2 }),
+      ]);
+      this.flowers = new THREE.InstancedMesh(geo, makeMaterial({ emissiveIntensity: 1.4 }), MAX);
+      this.flowers.count = 0;
+      this.flowers.frustumCulled = false;
+      this.group.add(this.flowers);
+    }
+    n = Math.min(MAX, n);
+    // Flowers present at load are already grown; new ones sprout.
+    while (this.flowerGrow.length < n) this.flowerGrow.push(this.gardenReady ? 0 : 1);
+    this.gardenReady = true;
+    this.flowerGrow.length = n;
+    this.flowerN = n;
+    this.flowers.count = n;
+  }
+
+  private updateGarden(dt: number, time: number): void {
+    if (!this.flowers) return;
+    for (let i = 0; i < this.flowerN; i++) {
+      this.flowerGrow[i] = Math.min(1, this.flowerGrow[i] + dt * 1.5);
+      const g = this.flowerGrow[i];
+      const pop = g < 1 ? Math.sin(g * Math.PI * 0.5) * (1 + Math.sin(g * Math.PI) * 0.4) : 1;
+      // Golden-angle spiral between the steps and the prisms.
+      const a = i * 2.39996;
+      const r = 3.15 + (i % 5) * 0.28;
+      this.starObj.position.set(Math.cos(a) * r, 0.05, Math.sin(a) * r);
+      this.starObj.rotation.set(Math.sin(time + i) * 0.08, time * 0.3 + i, 0);
+      this.starObj.scale.setScalar(0.001 + pop * (0.9 + (i % 3) * 0.12));
+      this.starObj.updateMatrix();
+      this.flowers.setMatrixAt(i, this.starObj.matrix);
+    }
+    this.flowers.instanceMatrix.needsUpdate = true;
+  }
+
   /** Light the first `n` constellation stars. */
   setStars(n: number): void {
     if (n === this.litStars) return;
@@ -265,6 +312,7 @@ export class Lighthouse {
   }
 
   update(dt: number, time: number): void {
+    this.updateGarden(dt, time);
     this.awake += (this.awakeTarget - this.awake) * Math.min(1, dt * 1.5);
     const a = this.awake;
     this.lantern.rotation.y = time * (0.4 + a * 1.5);

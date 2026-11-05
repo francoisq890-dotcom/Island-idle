@@ -1,13 +1,17 @@
 /** Pure day/night helpers (shared by the game, the 3D world and the bot). */
 import { DAY_NIGHT } from '../config/daynight';
 import type { GameState } from './state';
+import { oraclePath } from './talents';
 
 /** Night length for this state (talents / runes can lengthen it). */
 export function nightLength(state: GameState): number {
   let mult = 1;
   // Éclipse (mythic Moon rune): the night lasts twice as long.
   if ((state.runes.mo6 ?? 0) > 0) mult *= 2;
-  return Math.min(DAY_NIGHT.cycle * 0.6, DAY_NIGHT.night * mult);
+  let n = DAY_NIGHT.night * mult;
+  // Voie de l'Oracle: the night takes half the cycle.
+  if (oraclePath(state)) n = Math.max(n, DAY_NIGHT.cycle * 0.5);
+  return Math.min(DAY_NIGHT.cycle * 0.6, n);
 }
 
 /** Seconds of the current cycle when the night starts. */

@@ -721,3 +721,42 @@ table.odds .ef { color: var(--ink-soft); font-size: 14px; }
 .pet-btns { margin-top: 4px; }
 .pill-btn.small { font-size: 13px; padding: 3px 10px; }
 .float.pet { color: #8fd18a; font-size: 15px; }
+
+/* Jardin d'étoiles -------------------------------------------------------------- */
+.garden-head { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; margin: 8px 2px 4px; padding: 8px 10px; border-radius: 6px; background: rgba(197,155,255,.16); box-shadow: inset 0 0 0 1px rgba(111,69,184,.35); }
+.seedbox { display: flex; gap: 10px; align-items: center; }
+.seedbox > .ico { width: 46px; height: 46px; flex: none; }
+.seedbox b { font-family: var(--display); font-size: 26px; color: var(--violet); }
+.garden-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.garden { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 6px; }
+.branch { position: relative; display: flex; flex-direction: column; gap: 10px; padding-left: 14px; }
+.branch::before { content: ''; position: absolute; left: 4px; top: 38px; bottom: 26px; width: 3px; border-radius: 2px; background: repeating-linear-gradient(var(--bc) 0 7px, transparent 7px 11px); opacity: .55; }
+.branch-head { display: flex; flex-direction: column; margin-left: -14px; padding-bottom: 2px; border-bottom: 2px solid var(--bc); }
+.branch-head b { font-family: var(--display); font-size: 20px; color: var(--bc); }
+.branch-head span { font-size: 12.5px; color: var(--ink-soft); }
+.tnode { position: relative; display: grid; grid-template-columns: 34px 1fr auto; gap: 8px; align-items: center; padding: 7px 8px; border-radius: 8px; background: var(--vellum-hi); box-shadow: 0 2px 0 var(--vellum-lo), inset 0 0 0 1px rgba(125,83,33,.3); }
+.tnode::before { content: ''; position: absolute; left: -12px; top: 50%; width: 10px; height: 3px; background: var(--bc); opacity: .55; }
+.tnode.on { box-shadow: 0 2px 0 var(--vellum-lo), inset 0 0 0 2px var(--bc); }
+.tnode.locked { opacity: .55; }
+.tnode.path { background: linear-gradient(var(--vellum-hi), var(--vellum-hi)) padding-box, repeating-linear-gradient(45deg, var(--bc) 0 4px, transparent 4px 8px) border-box; border: 2px solid transparent; }
+.tnode.stamp { animation: tStamp .5s cubic-bezier(.2,1.5,.4,1); }
+@keyframes tStamp { 30% { transform: scale(1.06); } }
+.tmedal { width: 34px; height: 34px; padding: 5px; border-radius: 50%; background: var(--bc); box-shadow: inset 0 0 0 2px rgba(0,0,0,.2); }
+.tnode:not(.on) .tmedal { filter: grayscale(.8) brightness(1.2); }
+.tmedal .ico { width: 100%; height: 100%; }
+.tname { font-family: var(--display); font-size: 15.5px; font-weight: 700; line-height: 1.1; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; }
+.tdesc { font-size: 12.5px; color: var(--ink-soft); line-height: 1.25; margin-top: 2px; }
+.tlock { display: flex; gap: 4px; align-items: center; font-size: 11.5px; color: var(--bad); font-weight: 700; margin-top: 2px; }
+.tlock .ico { width: 13px; height: 13px; }
+.tpips { display: inline-flex; gap: 2px; }
+.tpips i { width: 7px; height: 7px; border-radius: 50%; border: 1.3px solid var(--bc); }
+.tpips i.on { background: var(--bc); }
+.tcost { display: flex; align-items: center; gap: 3px; padding: 4px 8px; border-radius: 14px; font: 700 15px var(--display); color: var(--vellum-hi); background: var(--violet); border: 2px solid #3d2370; box-shadow: 0 2px 0 #3d2370; cursor: pointer; transition: transform .1s; }
+.tcost .ico { width: 16px; height: 16px; }
+.tcost:hover { transform: translateY(-1px); }
+.tcost:active { transform: translateY(1px); box-shadow: none; }
+.tcost.no { background: var(--vellum-lo); color: var(--ink-faint); border-color: var(--brass-lo); box-shadow: none; cursor: default; }
+.tcost.done { background: none; border: none; box-shadow: none; }
+.tcost.done .ico { width: 22px; height: 22px; }
+@media (max-width: 900px) { .garden { grid-template-columns: 1fr; } }
+.panel.talents { width: min(1000px, calc(100vw - 24px)); }

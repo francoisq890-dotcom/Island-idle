@@ -36,6 +36,12 @@ import { OBJECTIVES } from './objectives';
 import { altarUpgradeCost, autoRollAllowed, buyAltarUpgrade, bulkOf, canFuse, cooldownOf, doRoll, familyUnlocked, fuse, luckOf, rarityChances, rollCostOf, runeFor } from './runes';
 import { createInitialState, type GameState } from './state';
 import { mulberry32 } from '../core/noise';
+import { canPlant, pickPath, plant } from './talents';
+import { TALENT_BY_ID } from '../config/talents';
+
+/** Talent priorities of the bot. */
+export const ACTIVE_TALENTS = ['grip', 'clover', 'dreamer', 'streak', 'eye', 'grip', 'thrift', 'pathPick', 'founder', 'alchemy', 'patience', 'hunter', 'clover', 'eye', 'thrift', 'streak', 'founder', 'generous', 'foreman'];
+export const IDLE_TALENTS = ['dreamer', 'clover', 'founder', 'thrift', 'foreman', 'pathAuto', 'clover', 'thrift', 'founder', 'alchemy', 'patience', 'grip', 'generous', 'eye', 'dreamer'];
 
 export interface SimEvent {
   t: number;
@@ -74,6 +80,8 @@ export interface SimOptions {
   noRunes?: boolean;
   /** Disable familiars. */
   noPets?: boolean;
+  /** Talent planting priorities (default depends on the profile). */
+  talentOrder?: string[];
   /** Share of event rewards the player actually grabs. */
   eventCatch?: number;
   seed?: number;
@@ -222,6 +230,17 @@ export function simulateRun(opts: SimOptions = {}): SimResult {
   let guardians = 0;
   let fusions = 0;
   let pets = 0;
+  let strikes = 0;
+  const plantTalents = () => {
+    // Fixed priorities per play style: the bot plants the first plantable talent of its list.
+    const order = opts.talentOrder ?? (clickUntil > 1200 ? ACTIVE_TALENTS : IDLE_TALENTS);
+    for (let guard = 0; guard < 60; guard++) {
+      const id = order.find((t) => canPlant(state, TALENT_BY_ID.get(t)!));
+      if (!id || !plant(state, id)) break;
+    }
+  };
+  plantTalents();
+  state.autoBuy = true;
   let rolls = 0;
 
   const note = (t: number, what: string) => {
@@ -249,8 +268,10 @@ export function simulateRun(opts: SimOptions = {}): SimResult {
     if (clicking) {
       clickAcc += cps * Math.min(1.6, rates.strikeSpeed) * dt;
       while (clickAcc >= 1) {
-        harvestEx(state, rates, rng);
+        harvestEx(state, rates, rng, { scale: 1 + rates.streakCap });
         clickAcc -= 1;
+        strikes++;
+        if (strikes % 25 === 0 && pickPath(state)) addShards(state, rates.click * 10);
       }
     }
     t += dt;
@@ -311,8 +332,8 @@ export function simulateRun(opts: SimOptions = {}): SimResult {
       // Fusion: always fuse the rarest duplicates first.
       if (!noRunes && state.fragments > 0) {
         for (const def of [...RUNES].sort((a, b) => RARITY_INDEX[b.rarity] - RARITY_INDEX[a.rarity])) {
-          while (canFuse(state, def, 1)) {
-            fuse(state, def, 1);
+          while (canFuse(state, def)) {
+            fuse(state, def);
             fusions++;
           }
         }

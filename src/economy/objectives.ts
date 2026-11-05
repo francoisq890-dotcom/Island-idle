@@ -180,6 +180,14 @@ export const OBJECTIVES: Objective[] = [
     target: { kind: 'lighthouse' },
     progress: (s) => [s.stats.prestiges > 0 ? 1 : 0, 1],
   },
+  {
+    id: 'talent1',
+    text: 'Plante une graine dans le Jardin d’étoiles',
+    touchText: 'Plante une graine dans le Jardin d’étoiles (bouton graine)',
+    hint: 'Touche T. Les graines plantées continuent de compter pour ta production.',
+    target: { kind: 'none' },
+    progress: (s) => [Object.keys(s.talents).length > 0 ? 1 : 0, 1],
+  },
 ];
 
 export function currentObjective(state: GameState): Objective | null {

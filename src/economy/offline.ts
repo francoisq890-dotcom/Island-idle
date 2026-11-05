@@ -1,6 +1,7 @@
 import { OFFLINE } from '../config/economy';
 import { addLumen, addShards, computeRates } from './economy';
 import type { GameState } from './state';
+import { offlineExtraHours } from './talents';
 
 export interface OfflineReport {
   /** Real time away, in seconds. */
@@ -19,7 +20,8 @@ export interface OfflineReport {
  */
 export function applyOffline(state: GameState, now = Date.now()): OfflineReport {
   const awaySeconds = Math.max(0, (now - state.lastSeen) / 1000);
-  const creditedSeconds = Math.min(awaySeconds, OFFLINE.maxSeconds);
+  const cap = OFFLINE.maxSeconds + offlineExtraHours(state) * 3600;
+  const creditedSeconds = Math.min(awaySeconds, cap);
   const rates = computeRates(state);
   const eff = OFFLINE.efficiency * rates.offlineMult;
   const shards = Math.max(0, rates.shards) * creditedSeconds * eff;
@@ -29,7 +31,7 @@ export function applyOffline(state: GameState, now = Date.now()): OfflineReport 
   // The sky keeps turning while away (nights spent away are not counted).
   state.clock += creditedSeconds;
   state.lastSeen = now;
-  return { awaySeconds, creditedSeconds, shards, lumen, capped: awaySeconds > OFFLINE.maxSeconds };
+  return { awaySeconds, creditedSeconds, shards, lumen, capped: awaySeconds > cap };
 }
 
 export function shouldShowOfflineReport(r: OfflineReport): boolean {

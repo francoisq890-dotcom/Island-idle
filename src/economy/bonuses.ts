@@ -5,6 +5,7 @@
 import { STAT_CAP, type RuneStat } from '../config/runes';
 import { achievementTotals } from './achievements';
 import { runeTotals } from './runes';
+import { talentTotals } from './talents';
 import type { GameState } from './state';
 
 export type BonusTotals = Record<RuneStat, number>;
@@ -16,6 +17,8 @@ function keyOf(s: GameState): string {
   let k = '';
   for (const id in s.runes) k += id + s.runes[id];
   for (const id in s.achievements) k += id + s.achievements[id];
+  k += '|';
+  for (const id in s.talents) k += id + s.talents[id];
   return k;
 }
 
@@ -26,6 +29,8 @@ export function bonusTotals(state: GameState): BonusTotals {
   const a = achievementTotals(state);
   const t = { ...r };
   for (const k in a) t[k as RuneStat] += a[k as RuneStat];
+  const tt = talentTotals(state);
+  for (const k in tt) t[k as RuneStat] += tt[k as RuneStat]!;
   for (const k in STAT_CAP) t[k as RuneStat] = Math.min(t[k as RuneStat], STAT_CAP[k as RuneStat]!);
   t.bulk = Math.floor(t.bulk);
   cacheKey = key;

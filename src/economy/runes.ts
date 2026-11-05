@@ -28,6 +28,7 @@ import {
 import type { GameState } from './state';
 import { bonusTotals } from './bonuses';
 import { isNight, nightLuckMult } from './daynight';
+import { autoShare, fuseMult, pityMult } from './talents';
 
 export type RuneTotals = Record<RuneStat, number>;
 
@@ -133,7 +134,8 @@ export const AUTO_SHARE = 0.1;
 export function autoRollAllowed(state: GameState, family: FamilyId, rates: { shards: number; lumen: number }): boolean {
   const c = rollCostOf(state, family);
   const cd = cooldownOf(state);
-  return (c.shards ?? 0) <= rates.shards * cd * AUTO_SHARE && (c.lumen ?? 0) <= rates.lumen * cd * AUTO_SHARE && canRoll(state, family);
+  const share = autoShare(state);
+  return (c.shards ?? 0) <= rates.shards * cd * share && (c.lumen ?? 0) <= rates.lumen * cd * share && canRoll(state, family);
 }
 
 export function canRoll(state: GameState, family: FamilyId): boolean {
@@ -170,7 +172,8 @@ export function drawRunes(state: GameState, family: FamilyId, n: number, luck: n
   for (let i = 0; i < n; i++) {
     let ri = RARITY_INDEX[rollRarity(luck, rng)];
     if (pity && i === 0) {
-      const want = state.pity.legendary + 1 >= PITY.legendary ? RARITY_INDEX.legendary : state.pity.epic + 1 >= PITY.epic ? RARITY_INDEX.epic : -1;
+      const pm = pityMult(state);
+      const want = state.pity.legendary + 1 >= PITY.legendary * pm ? RARITY_INDEX.legendary : state.pity.epic + 1 >= PITY.epic * pm ? RARITY_INDEX.epic : -1;
       if (want > ri) {
         ri = want;
         state.counters.pity += 1;
@@ -198,6 +201,7 @@ function addRune(state: GameState, def: RuneDef): RuneDef {
 
 /** Fragments needed to fuse a rune (null: this rarity cannot be fused). */
 export function fuseCost(def: RuneDef, fragMult = 1): number | null {
+  // fragMult: Alchimiste talent (fuseMult).
   const ri = RARITY_INDEX[def.rarity];
   const f = FUSE.fragments[ri];
   return f === undefined ? null : Math.ceil(f * fragMult);
@@ -210,13 +214,13 @@ export function fuseResult(def: RuneDef): RuneDef | null {
   return runeFor(def.family, RARITIES[ri + 1].id);
 }
 
-export function canFuse(state: GameState, def: RuneDef, fragMult = 1): boolean {
+export function canFuse(state: GameState, def: RuneDef, fragMult = fuseMult(state)): boolean {
   const c = fuseCost(def, fragMult);
   return c !== null && (state.runes[def.id] ?? 0) >= FUSE.copies && state.fragments >= c - 1e-9;
 }
 
 /** Fuse FUSE.copies copies of `def` (+ fragments) into one rune of the next rarity. */
-export function fuse(state: GameState, def: RuneDef, fragMult = 1): RuneDef | null {
+export function fuse(state: GameState, def: RuneDef, fragMult = fuseMult(state)): RuneDef | null {
   if (!canFuse(state, def, fragMult)) return null;
   const out = fuseResult(def)!;
   state.fragments -= fuseCost(def, fragMult)!;
