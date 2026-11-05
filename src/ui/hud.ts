@@ -35,6 +35,7 @@ export class Hud {
   private resShards = el('div', 'res shards');
   private resLumen = el('div', 'res lumen hide');
   private resSeeds = el('div', 'res seeds hide');
+  private resFrag = el('div', 'res frag hide');
   private objective = el('div', 'objective out');
   private promptEl = el('div', 'prompt');
   private tipEl = el('div', 'tip vellum-thin');
@@ -42,6 +43,7 @@ export class Hud {
   private toasts = el('div', 'toasts');
   private compassEl = el('div', 'compass', '<i></i>');
   private clockEl = el('div', 'clock-dial');
+  private bossEl = el('div', 'bossbar vellum-thin', '<div class="bb-top"><span class="bb-name"></span><span class="bb-time"></span></div><div class="bb-bar"><i></i><b></b></div><div class="bb-hint"></div>');
   readonly actions = el('div', 'actions');
   readonly workshopBtn: HTMLButtonElement;
   readonly prestigeBtn: HTMLButtonElement;
@@ -66,7 +68,9 @@ export class Hud {
     this.resShards.title = 'Éclats : la ressource de base, récoltée sur les cristaux';
     this.resLumen.title = 'Lumen : produit par les raffineries, sert aux ponts et machines rares';
     this.resSeeds.title = 'Graines d’étoile : bonus permanent de production (prestige)';
-    resources.append(this.resShards, this.resLumen, this.resSeeds, this.clockEl);
+    this.resFrag.innerHTML = `${ICONS.fragment}<div><div class="val">0</div><div class="rate">Fragments de rune</div></div>`;
+    this.resFrag.title = 'Fragments de rune : tombent des gardiens de cristal, servent à fusionner des runes au Creuset';
+    resources.append(this.resShards, this.resLumen, this.resSeeds, this.resFrag, this.clockEl);
     this.clockEl.innerHTML = `<svg viewBox="0 0 40 40" class="dial"><circle cx="20" cy="20" r="16" class="track"/><circle cx="20" cy="20" r="16" class="arc" pathLength="100"/></svg><span class="glyph"></span><span class="txt"></span>`;
     this.clockEl.title = 'Cycle du jour et de la nuit : la nuit, la chance des runes monte de 50 %';
 
@@ -90,7 +94,7 @@ export class Hud {
     this.actBtn = el('button', 'touch-btn act', `${ICONS.hand}<span>Action</span>`) as HTMLButtonElement;
     pad.append(this.jumpBtn, this.actBtn);
 
-    this.root.append(resources, this.objective, this.actions, this.promptEl, this.tipEl, this.floaters, this.toasts, this.compassEl, pad);
+    this.root.append(this.bossEl, resources, this.objective, this.actions, this.promptEl, this.tipEl, this.floaters, this.toasts, this.compassEl, pad);
     parent.appendChild(this.root);
   }
 
@@ -119,6 +123,30 @@ export class Hud {
     if (this.last.lumen >= 0 && lumen > this.last.lumen + Math.max(1, lumenRate * 0.6)) this.bump(this.resLumen);
     this.last.shards = shards;
     this.last.lumen = lumen;
+  }
+
+  setFragments(n: number, visible: boolean): void {
+    this.resFrag.classList.toggle('hide', !visible);
+    const v = formatNumber(Math.floor(n));
+    const valEl = this.resFrag.querySelector('.val')!;
+    if (valEl.textContent !== v) {
+      if (valEl.textContent !== '0' && valEl.textContent !== '') this.bump(this.resFrag);
+      valEl.textContent = v;
+    }
+  }
+
+  /** Boss bar for guardian fights (null hides it). */
+  setBoss(o: { name: string; hp: number; max: number; time: number; hint: string; danger?: boolean } | null): void {
+    this.bossEl.classList.toggle('on', !!o);
+    this.root.classList.toggle('boss', !!o);
+    if (!o) return;
+    this.set('bn', this.bossEl.querySelector('.bb-name')!, o.name);
+    this.set('bt', this.bossEl.querySelector('.bb-time')!, `${Math.max(0, Math.ceil(o.time))} s`);
+    this.set('bh', this.bossEl.querySelector('.bb-hint')!, o.hint);
+    this.set('bv', this.bossEl.querySelector('.bb-bar b')!, `${o.hp} / ${o.max}`);
+    (this.bossEl.querySelector('.bb-bar i') as HTMLElement).style.width = `${(o.hp / o.max) * 100}%`;
+    this.bossEl.classList.toggle('danger', !!o.danger);
+    this.bossEl.classList.toggle('urgent', o.time < 8);
   }
 
   /** Day/night dial: progress of the current phase and a short label. */
@@ -174,7 +202,7 @@ export class Hud {
     const h = this.tipEl.offsetHeight;
     const px = Math.max(8, Math.min(window.innerWidth - w - 8, x - w / 2));
     // Flip below the anchor when it would cover the objective card at the top.
-    const topLimit = window.innerWidth > 760 ? 140 : 70;
+    const topLimit = (window.innerWidth > 760 ? 140 : 70) + (this.root.classList.contains('boss') ? 110 : 0);
     let py = y - h - 14;
     const below = py < topLimit;
     if (below) py = y + 30;

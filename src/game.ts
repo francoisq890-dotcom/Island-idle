@@ -37,11 +37,14 @@ import { ICONS } from './ui/icons';
 import { MACHINE_ICON, Panels } from './ui/panels';
 import { Journal } from './ui/journal';
 import { Celebration, RunePanel, runeEffect, statText as statTextFn } from './ui/runes';
-import { FAMILIES, RARITIES, RARITY_INDEX, type FamilyId, type RuneDef } from './config/runes';
-import { autoRollAllowed, buyAltarUpgrade, cooldownOf, doRoll, rollCostOf } from './economy/runes';
+import { FAMILIES, RARITIES, RARITY_INDEX, RUNE_BY_ID, type FamilyId, type RuneDef } from './config/runes';
+import { autoRollAllowed, buyAltarUpgrade, cooldownOf, doRoll, fuse, rollCostOf } from './economy/runes';
 import { EVENTS, between } from './config/events';
 import { CONSTELLATIONS, hasPerk } from './config/constellations';
 import { GoldenCrystal, MeteorField } from './world/events';
+import { Guardian } from './world/guardian';
+import { GUARDIAN } from './config/guardians';
+import { defeatGuardian, guardiansUnlocked } from './economy/guardians';
 import { addLumen, addShards } from './economy/economy';
 import { checkAchievements, type AchievementUnlock } from './economy/achievements';
 import { TIER_NAMES } from './config/achievements';
@@ -143,6 +146,7 @@ export class Game {
           this.audio.ui('click');
         },
         nearAltar: (f) => this.nearAltar(f),
+        fuse: (id) => this.fuseRune(id),
         sound: (k) => this.audio.ui(k),
       },
       () => this.state,
@@ -159,6 +163,18 @@ export class Game {
     this.world.scene.add(this.meteors.group, this.golden.group);
     this.goldenIt = { id: 'golden', kind: 'golden', anchor: new THREE.Vector3(), range: 3.2, sphere: new THREE.Sphere(new THREE.Vector3(), 1.6), active: false };
     this.world.interactables.push(this.goldenIt);
+    this.guardian = new Guardian(this.world.particles);
+    this.world.scene.add(this.guardian.group, this.guardian.waveMesh);
+    this.guardianIt = { id: 'guardian', kind: 'guardian', anchor: new THREE.Vector3(), range: 3.4, sphere: new THREE.Sphere(new THREE.Vector3(), 1.9), active: false };
+    this.world.interactables.push(this.guardianIt);
+    const gp = this.guardian.position;
+    // The golem is solid while it fights (moving obstacle: getters follow it).
+    this.world.ground.obstacles.push({ get x() { return gp.x; }, get z() { return gp.z; }, r: 1.25, zone: 'home', active: () => this.guardian.active });
+    this.guardian.onSlam = () => {
+      this.audio.guardianSlam();
+      this.world.rig.shake(0.55);
+      this.waveHitDone = false;
+    };
     this.meteors.onLand = () => {
       this.audio.meteorLand();
       this.world.rig.shake(0.12);
@@ -266,7 +282,8 @@ export class Game {
     if (this.started && !this.busy) this.handleInput(dt);
 
     // Player & camera.
-    const move = this.started && !this.busy ? this.input.move : { x: 0, y: 0 };
+    const move = this.started && !this.busy && this.stunned <= 0 ? this.input.move : { x: 0, y: 0 };
+    this.stunned = Math.max(0, this.stunned - dt);
     this.lastPos.copy(this.world.player.position);
     this.world.player.update(dt, move, this.world.rig.viewYaw, this.world.ground, this.time);
     const moved = Math.hypot(this.world.player.position.x - this.lastPos.x, this.world.player.position.z - this.lastPos.z);
@@ -407,6 +424,7 @@ export class Game {
   /** Seconds the explorer has been standing still. */
   private stillTime = 0;
   private doJump(): void {
+    if (this.stunned > 0) return;
     if (!this.world.player.grounded) return this.world.player.jump();
     this.audio.jump();
     this.world.player.jump();
@@ -451,6 +469,14 @@ export class Game {
         if (this.panels.open === this.runePanel.el && this.runePanel.family === it.family && fromKey) this.rollRunes(it.family!, false);
         else this.openRunes(it.family!);
         break;
+      case 'crucible':
+        this.openRunes(this.lastFamily);
+        this.runePanel.setTab('fuse');
+        break;
+      case 'guardian':
+        if (d <= it.range + (fromKey ? 0 : 6)) this.strikeGuardian();
+        else this.tooFar('Approche-toi du gardien');
+        break;
     }
   }
 
@@ -482,9 +508,18 @@ export class Game {
 
   /** Swing the pickaxe at the crystal; the gain lands on the impact frame. */
   private doHarvest(): void {
+    if (this.stunned > 0) return;
     this.state.flags.nearCrystal = true;
     this.world.player.requestStrike(this.world.crystal.position, () => {
-      const { value: v, crit } = harvestEx(this.state, this.rates);
+      const forced = this.rates.phoenix && this.phoenixCharges > 0;
+      if (forced) this.phoenixCharges--;
+      const { value: v, crit } = harvestEx(this.state, this.rates, Math.random, { forceCrit: forced });
+      if (crit && !forced && this.rates.phoenix) {
+        this.phoenixCharges = 3;
+        this.world.particles.sparks(this.world.impactPoint(), { count: 40, color: 0xff7a3d, speed: 7, life: 0.9, size: 0.1, up: 4 });
+        this.hud.float(this.world.impactPoint().x, this.world.impactPoint().y + 2.2, this.world.impactPoint().z, 'Phénix !', 'text lumen', 1.2);
+      }
+      if (this.rates.echo) this.tweens.wait(0.5).then(() => this.echoStrike());
       this.world.harvestFx(crit ? v * 3 : v);
       this.bumpCombo();
       this.audio.harvest(this.world.player.pickTierIndex);
@@ -496,6 +531,24 @@ export class Game {
         this.hud.float(hp.x, hp.y + 1.1, hp.z, `Critique ! +${formatNumber(v, 1)}${ICONS.shard}`, 'huge lumen', 1.4);
       } else this.hud.float(hp.x + (Math.random() - 0.5) * 0.6, hp.y + 0.7, hp.z + (Math.random() - 0.5) * 0.6, `+${formatNumber(v, 1)}${ICONS.shard}`, v >= 100 ? 'big' : '');
     });
+  }
+
+  private phoenixCharges = 0;
+  private guardian!: Guardian;
+  private guardianIt!: Interactable;
+  private nextGuardian = -1;
+  private stunned = 0;
+  private fightDodges = 0;
+  private waveHitDone = false;
+
+  /** Écho de la montagne: a ghost impact half a second later, worth 50 %. */
+  private echoStrike(): void {
+    const { value: v } = harvestEx(this.state, this.rates, Math.random, { scale: 0.5, echo: true });
+    const hp = this.world.impactPoint();
+    this.world.crystal.hit();
+    this.world.particles.sparks(hp, { count: 10, color: 0xc99a6c, speed: 4, life: 0.5, size: 0.07, up: 2 });
+    this.audio.harvest(Math.max(0, this.world.player.pickTierIndex - 2));
+    this.hud.float(hp.x + 0.5, hp.y + 0.4, hp.z, `+${formatNumber(v, 1)}`, 'small', 0.9);
   }
 
   buyMachine(id: MachineId, n: number): boolean {
@@ -651,6 +704,34 @@ export class Game {
     return got;
   }
 
+  /** Fuse duplicates at the Creuset runique. */
+  private fuseRune(id: string): boolean {
+    const def = RUNE_BY_ID.get(id);
+    const out = def ? fuse(this.state, def, 1) : null;
+    if (!out) {
+      this.audio.error();
+      return false;
+    }
+    this.markDirty();
+    const ri = RARITY_INDEX[out.rarity];
+    const r = RARITIES[ri];
+    this.world.crucible.fuseFx(r.color, ri);
+    this.audio.runeRoll(ri, this.world.crucible.position.distanceTo(this.world.player.position) > 30);
+    const at = this.world.crucible.mouth;
+    this.hud.float(at.x, at.y + 1.2, at.z, `${out.name}`, ri >= 3 ? 'big violet' : 'violet', 1.4);
+    if (r.celebrate >= 3) {
+      this.celebration.show(out, this.state.runes[out.id]);
+      this.slowMo(1.2, 0.35);
+      this.renderer.setFlashColor(r.color);
+      this.tweens.add(1.2, (v) => (this.renderer.flash = 0.4 * (1 - v)), { ease: Ease.outCubic });
+      this.audio.runeFanfare(ri);
+      this.world.rig.shake(0.5);
+    } else this.hud.toast('cauldron', `Fusion : ${out.name}`, `${RARITIES[ri].name} · ${runeEffect(out, 1)} par copie`, ri >= 2 ? 'violet' : 'ether');
+    this.runePanel.refresh();
+    this.afterProgress();
+    return true;
+  }
+
   private togglePanel(p: HTMLElement, before?: () => void): void {
     if (this.panels.open === p) return this.panels.close();
     before?.();
@@ -662,6 +743,7 @@ export class Game {
   // ---------------------------------------------------------------------------
 
   private updateEvents(dt: number): void {
+    this.updateGuardian(dt);
     const p = this.world.player.position;
     this.meteors.update(dt, this.time, p, EVENTS.meteor.magnet);
     if (this.golden.update(dt, this.time)) {
@@ -675,14 +757,129 @@ export class Game {
       this.nextMeteor = between(EVENTS.meteor.every);
       this.startMeteorShower();
     }
-    if (this.nextGolden <= 0 && !this.golden.active && this.state.stats.harvests >= 10) {
+    if (this.nextGolden <= 0 && !this.golden.active && !this.guardian.visible && this.state.stats.harvests >= 10) {
       this.nextGolden = between(EVENTS.golden.every) * (hasPerk(this.state.lifetimeSeeds, 'goldenRush') ? 0.5 : 1);
       this.spawnGolden();
     }
   }
 
+  // --- Crystal guardians -------------------------------------------------------
+
+  private updateGuardian(dt: number): void {
+    const g = this.guardian;
+    if (g.update(dt, this.time) === 'timeout') {
+      this.guardianIt.active = false;
+      this.audio.guardianLeave();
+      this.hud.toast('fragment', 'Le gardien est reparti sous terre…', 'Il reviendra. Frappe plus vite la prochaine fois !');
+    }
+    // Shockwave: grounded players inside the ring's band get stunned; jumping dodges it.
+    if (g.waveRadius > 0 && !this.waveHitDone) {
+      const p = this.world.player.position;
+      const d = Math.hypot(p.x - g.position.x, p.z - g.position.z);
+      if (Math.abs(d - g.waveRadius) < 0.55) {
+        this.waveHitDone = true;
+        if (this.world.player.grounded) {
+          this.stunned = GUARDIAN.stun;
+          this.audio.error();
+          this.world.rig.shake(0.5);
+          this.world.particles.sparks(p.clone().setY(p.y + 1.6), { count: 12, color: 0xfff1a8, speed: 1.5, life: GUARDIAN.stun, size: 0.08, up: 0.5, gravity: 0 });
+          this.hud.float(p.x, p.y + 2.2, p.z, 'Étourdi !', 'text', 1);
+        } else {
+          this.fightDodges++;
+          this.state.counters.dodges++;
+          this.audio.dodge();
+          this.hud.float(p.x, p.y + 2.2, p.z, 'Esquivé !', 'text lumen', 1);
+          if (this.fightDodges >= 5) this.secret('sec_dodger');
+        }
+      }
+    }
+    if (g.active) {
+      this.guardianIt.sphere.center.copy(g.position).setY(g.position.y + 1.4);
+      this.guardianIt.anchor.copy(g.position).setY(g.position.y + 3.6);
+      const windup = g.waveRadius > 0 || g.winding;
+      this.hud.setBoss({
+        name: 'Gardien de cristal',
+        hp: g.hp,
+        max: g.maxHp,
+        time: g.timeLeft,
+        hint: windup ? 'Il frappe le sol : SAUTE (Espace) !' : this.stunned > 0 ? 'Étourdi…' : this.input.isTouch ? 'Touche-le pour le frapper · saute quand il frappe le sol' : 'Clic ou E pour frapper · Espace pour sauter l’onde de choc',
+        danger: windup,
+      });
+    } else this.hud.setBoss(null);
+
+    if (!this.started || this.busy || !guardiansUnlocked(this.state)) return;
+    if (this.nextGuardian < 0) this.nextGuardian = between(this.state.counters.guardians === 0 ? GUARDIAN.first : GUARDIAN.every);
+    if (g.visible) return;
+    this.nextGuardian -= dt * (isNight(this.state) ? GUARDIAN.nightRate : 1);
+    if (this.nextGuardian <= 0 && !this.golden.active) this.spawnGuardian();
+  }
+
+  spawnGuardian(): void {
+    const spot = this.freeSpots(1, 5, 12, 2.2)[0] ?? this.freeSpots(1, 4, 14, 1.4)[0];
+    if (!spot) return;
+    this.nextGuardian = between(GUARDIAN.every);
+    this.guardian.spawn(spot, this.world.player.position, GUARDIAN.hp, GUARDIAN.time);
+    this.guardianIt.active = true;
+    this.fightDodges = 0;
+    this.audio.guardianAppear();
+    this.world.rig.shake(0.4);
+    this.state.counters.eventsSeen++;
+    const first = this.state.counters.guardians === 0 && !this.state.flags.guardianSeen;
+    this.state.flags.guardianSeen = true;
+    this.hud.toast('fragment', first ? 'Un gardien de cristal surgit !' : 'Gardien de cristal !', first ? `Brise-le à la pioche en ${GUARDIAN.time} s. Quand il frappe le sol, saute pour éviter l’onde de choc. Il lâche des fragments de rune.` : `${GUARDIAN.time} s pour le briser`, 'ether');
+  }
+
+  private strikeGuardian(): void {
+    const g = this.guardian;
+    if (!g.active || this.stunned > 0) return;
+    this.world.player.requestStrike(
+      g.position,
+      () => {
+        if (!g.active) return;
+        const forced = this.rates.phoenix && this.phoenixCharges > 0;
+        if (forced) this.phoenixCharges--;
+        const crit = forced || (this.rates.critChance > 0 && Math.random() < this.rates.critChance);
+        if (crit && !forced && this.rates.phoenix) this.phoenixCharges = 3;
+        const small = this.rates.click * GUARDIAN.hitClicks * (crit ? 2 : 1);
+        addShards(this.state, small);
+        this.bumpCombo();
+        this.audio.guardianHit(crit);
+        this.world.rig.shake(crit ? 0.3 : 0.15);
+        const at = g.impactPoint(this.world.player.position);
+        this.hud.float(at.x, at.y + 0.8, at.z, crit ? `−2 · critique !` : '−1', crit ? 'big lumen' : 'small', 0.9);
+        if (g.hit(crit ? 2 : 1, this.world.player.position)) this.defeatGuardian();
+      },
+      2.3,
+    );
+  }
+
+  private defeatGuardian(): void {
+    const g = this.guardian;
+    const loot = defeatGuardian(this.state, this.rates, g.elapsed);
+    this.guardianIt.active = false;
+    this.markDirty();
+    this.audio.guardianBreak();
+    this.slowMo(0.9, 0.3);
+    this.world.rig.shake(0.8);
+    this.renderer.setFlashColor(0xf08cb0);
+    this.tweens.add(0.9, (v) => (this.renderer.flash = 0.35 * (1 - v)), { ease: Ease.outCubic });
+    const at = g.position;
+    this.hud.float(at.x, at.y + 3.2, at.z, `+${loot.fragments} ${ICONS.fragment}`, 'huge', 2);
+    this.hud.float(at.x + 1, at.y + 2.4, at.z, `+${formatNumber(loot.shards)}${ICONS.shard}`, 'big', 1.8);
+    const best = loot.runes.reduce((m, r) => Math.max(m, RARITY_INDEX[r.rarity]), 0);
+    const bestDef = loot.runes.find((r) => RARITY_INDEX[r.rarity] === best)!;
+    const names = loot.runes.map((r) => r.name).join(', ');
+    this.hud.toast('fragment', `Gardien brisé en ${formatDuration(g.elapsed)} !`, `+${loot.fragments} fragments de rune · ${names}`, 'gold');
+    if (RARITIES[best].celebrate >= 3) {
+      this.celebration.show(bestDef, this.state.runes[bestDef.id]);
+      this.audio.runeFanfare(best);
+    }
+    if (this.state.counters.guardians === 1) window.setTimeout(() => this.hud.toast('cauldron', 'Le Creuset runique s’allume', 'Près du Nexus : fusionne 5 copies d’une rune avec des fragments pour obtenir la rareté supérieure.', 'violet'), 2500);
+    this.afterProgress();
+  }
+
   /** Random free spots on solid ground around the player. */
-  private freeSpots(n: number, minR: number, maxR: number): THREE.Vector3[] {
+  private freeSpots(n: number, minR: number, maxR: number, clearance = 0): THREE.Vector3[] {
     const out: THREE.Vector3[] = [];
     const p = this.world.player.position;
     const g = this.world.ground;
@@ -692,6 +889,16 @@ export class Game {
       const x = p.x + Math.cos(a) * r;
       const z = p.z + Math.sin(a) * r;
       if (!g.walkable(x, z) || g.overlap(x, z) > 0 || g.bridgeAt(x, z)) continue;
+      if (clearance > 0) {
+        let ok = true;
+        for (let k = 0; k < 8 && ok; k++) {
+          const ka = (k / 8) * Math.PI * 2;
+          const qx = x + Math.cos(ka) * clearance;
+          const qz = z + Math.sin(ka) * clearance;
+          if (!g.walkable(qx, qz) || g.bridgeAt(qx, qz)) ok = false;
+        }
+        if (!ok) continue;
+      }
       if (out.some((o) => Math.hypot(o.x - x, o.z - z) < 2)) continue;
       out.push(new THREE.Vector3(x, g.heightAt(x, z), z));
     }
@@ -730,7 +937,7 @@ export class Game {
   }
 
   private strikeGolden(): void {
-    if (!this.golden.active) return;
+    if (!this.golden.active || this.stunned > 0) return;
     this.world.player.requestStrike(
       this.golden.position,
       () => {
@@ -919,6 +1126,7 @@ export class Game {
     const s = this.state;
     const r = this.rates;
     this.hud.setResources(s.shards, r.shards, s.lumen, r.lumen, s.seeds, s.zones.forge || s.lumen > 0, s.seeds * PRESTIGE.bonusPerSeed * 100);
+    this.hud.setFragments(s.fragments, s.fragments > 0 || s.counters.guardians > 0);
 
     this.uiTimer += dt;
     const slow = this.uiTimer > 0.2;
@@ -992,6 +1200,7 @@ export class Game {
     let pos: THREE.Vector3 | null = null;
     let h = 3.2;
     if (this.golden.active) target = { kind: 'golden' } as unknown as ObjectiveTarget;
+    if (this.guardian.active) target = { kind: 'guardian' } as unknown as ObjectiveTarget;
     switch (target.kind) {
       case 'crystal':
         pos = this.world.beaconTarget('crystal');
@@ -1022,6 +1231,10 @@ export class Game {
           pos = this.golden.position.clone();
           h = 3.6;
         }
+        if ((target as { kind: string }).kind === 'guardian') {
+          pos = this.guardian.position.clone();
+          h = 4.2;
+        }
     }
     // Hide when the player is already there.
     if (pos && Math.hypot(pos.x - this.world.player.position.x, pos.z - this.world.player.position.z) < 3.2) pos = null;
@@ -1035,7 +1248,8 @@ export class Game {
   }
 
   private actionLabel(it: Interactable): string {
-    if (it.kind === 'crystal' || it.kind === 'golden') return 'Frapper';
+    if (it.kind === 'crystal' || it.kind === 'golden' || it.kind === 'guardian') return 'Frapper';
+    if (it.kind === 'crucible') return 'Creuset';
     if (it.kind === 'altar') return 'Runes';
     if (it.kind === 'site' || it.kind === 'bridge') return 'Construire';
     return 'Phare';
@@ -1066,8 +1280,13 @@ export class Game {
         return `${this.keyCap()} Frapper le cristal doré <span class="cost">${this.golden.hits}/${this.golden.maxHits}</span>`;
       case 'altar': {
         const f = FAMILIES[it.family!];
+        if (f.nightOnly && !isNight(s)) return `${f.altarName} <span class="cost">endormi · s’éveille dans ${formatDuration(secondsToNight(s))}</span>`;
         return `${this.keyCap()} ${f.altarName} <span class="cost">${costHtml(rollCostOf(s, it.family!), have)} / tirage</span>`;
       }
+      case 'crucible':
+        return `${this.keyCap()} Creuset runique <span class="cost">${ICONS.fragment}${formatNumber(Math.floor(s.fragments))}</span>`;
+      case 'guardian':
+        return `${this.keyCap()} Frapper le gardien <span class="cost">${this.guardian.hp} PV · ${Math.ceil(this.guardian.timeLeft)} s</span>`;
     }
   }
 
@@ -1119,10 +1338,19 @@ export class Game {
       }
       case 'golden':
         return `<h3>${ICONS.lumen} Cristal doré</h3><p>Frappe-le ${this.golden.maxHits} fois avant qu’il ne s’éteigne !</p><div class="kv"><span>Coups</span><b>${this.golden.hits} / ${this.golden.maxHits}</b></div><div class="kv"><span>Temps</span><b>${Math.ceil(this.golden.timeLeft)} s</b></div>`;
+      case 'crucible':
+        return `<h3>${ICONS.cauldron} Creuset runique</h3>
+          <p>Jette 5 copies d’une rune et quelques fragments : il en sort une rune de la rareté supérieure.</p>
+          <div class="kv"><span>Fragments</span><b>${ICONS.fragment} ${formatNumber(Math.floor(s.fragments))}</b></div>
+          ${s.fragments <= 0 ? '<div class="warn">Les fragments tombent des gardiens de cristal.</div>' : ''}
+          <div class="foot">${act('Ouvrir le Creuset')}</div>`;
+      case 'guardian':
+        return `<h3>${ICONS.fragment} Gardien de cristal</h3><p>Brise-le à la pioche avant qu’il ne reparte. Quand il frappe le sol, <b>saute</b> pour éviter l’onde de choc !</p><div class="kv"><span>Points de vie</span><b>${this.guardian.hp} / ${this.guardian.maxHp}</b></div><div class="kv"><span>Temps</span><b>${Math.ceil(this.guardian.timeLeft)} s</b></div>`;
       case 'altar': {
         const f = FAMILIES[it.family!];
         return `<h3>${ICONS.altar} ${f.altarName}</h3>
           <p>${f.blurb} Paie l’autel pour tirer des runes : leurs bonus s’additionnent.</p>
+          ${f.nightOnly && !isNight(s) ? `<div class="warn">Endormi. Il s’éveille à la nuit tombée, dans ${formatDuration(secondsToNight(s))}.</div>` : ''}
           <div class="kv"><span>Tirage</span><b>${costHtml(rollCostOf(s, it.family!), have)}</b></div>
           <div class="foot">${act('Ouvrir l’autel')}</div>`;
       }

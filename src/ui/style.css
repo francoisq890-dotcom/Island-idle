@@ -655,3 +655,53 @@ table.odds .ef { color: var(--ink-soft); font-size: 14px; }
   .clock-dial .glyph { width: 20px; height: 20px; margin-top: -10px; left: 1px; }
   .clock-dial .glyph .ico { width: 20px; height: 20px; }
 }
+:root { --frag: #b8406a; --frag-glow: #f08cb0; }
+.res.frag .val { color: var(--frag); }
+.res.frag.hide { display: none; }
+
+/* Guardian boss bar ---------------------------------------------------------- */
+.bossbar { position: absolute; top: 118px; left: 50%; width: min(440px, 80vw); transform: translate(-50%, -30px) scale(.9); opacity: 0; pointer-events: none !important; padding: 7px 14px 8px; transition: transform .3s cubic-bezier(.2,1.4,.4,1), opacity .2s; text-align: center; }
+.bossbar.on { transform: translate(-50%, 0) scale(1); opacity: 1; }
+.bb-top { display: flex; justify-content: space-between; align-items: baseline; font-family: var(--display); font-weight: 700; font-size: 19px; color: var(--ink); }
+.bb-time { font-variant-numeric: tabular-nums; color: var(--frag); }
+.bossbar.urgent .bb-time { animation: bbPulse .5s ease-in-out infinite alternate; }
+@keyframes bbPulse { to { transform: scale(1.18); color: var(--bad); } }
+.bb-bar { position: relative; height: 14px; margin: 5px 0 4px; border-radius: 7px; background: #3a2f45; box-shadow: inset 0 0 0 2px var(--brass-deep); overflow: hidden; }
+.bb-bar i { position: absolute; inset: 2px auto 2px 2px; border-radius: 5px; background: linear-gradient(#ffb3cd, var(--frag)); transition: width .18s ease-out; }
+.bb-bar b { position: relative; font-size: 11px; line-height: 14px; color: #fff; font-weight: 800; letter-spacing: .05em; }
+.bb-hint { font-size: 13.5px; color: var(--ink-soft); }
+.bossbar.danger { animation: bbShake .3s linear infinite; }
+.bossbar.danger .bb-hint { color: var(--bad); font-weight: 800; }
+@keyframes bbShake { 25% { margin-left: -2px; } 75% { margin-left: 2px; } }
+@media (max-width: 760px) { .bossbar { top: 64px; } .bb-top { font-size: 16px; } }
+
+/* Runes v2: night, pity, Creuset, sets ------------------------------------- */
+.luckline em.night { font-style: normal; font-weight: 800; color: #4b5fb0; margin-left: 4px; }
+.luckline .pity { flex-basis: 100%; font-size: 13.5px; }
+.luckline .pity b { font-size: 15px; color: var(--violet); }
+.warden-note { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; background: rgba(240,140,176,.14); border-radius: 6px; }
+.warden-note .ico { width: 30px; height: 30px; flex: none; }
+.crucible-head { display: flex; gap: 12px; align-items: center; margin: 8px 2px 4px; padding: 8px 10px; border-radius: 6px; background: rgba(240,140,176,.14); box-shadow: inset 0 0 0 1px rgba(184,64,106,.3); }
+.crucible-head > .ico { width: 52px; height: 52px; flex: none; }
+.crucible-head b.fcount { font-family: var(--display); font-size: 24px; color: var(--frag); }
+.row.fuse .medal.rune-medal { background: var(--vellum-hi); padding: 6px; }
+.row.fuse .medal .rune-ico { width: 100%; height: 100%; }
+.fuse-line { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 5px; }
+.fuse-line .ico { width: 15px; height: 15px; }
+.fuse-line .rune-ico { flex: none; }
+.set-row { display: grid; grid-template-columns: minmax(110px, 1fr) auto minmax(80px, auto); gap: 8px; align-items: center; padding: 7px 6px; border-bottom: 1px dashed rgba(125, 83, 33, 0.45); }
+.set-row.on { background: rgba(63,127,67,.1); }
+.set-name { font-family: var(--display); font-size: 16.5px; font-weight: 650; }
+.set-name small { margin-left: 6px; font-family: var(--text); font-size: 12px; color: var(--ink-faint); }
+.pieces { display: flex; gap: 4px; flex-wrap: wrap; }
+.piece { opacity: .45; filter: grayscale(.7); display: inline-flex; }
+.piece.got { opacity: 1; filter: none; }
+.piece.any { align-items: center; padding: 0 7px; height: 24px; border-radius: 12px; font-size: 12px; font-weight: 800; color: #fff; background: var(--fc); }
+.rune-tile.known { background: rgba(234,216,182,.75); }
+.rune-tile.known .rt-n { color: var(--ink-faint); font-family: var(--text); font-size: 11.5px; }
+.rune-tile.special { box-shadow: inset 0 0 0 2px #c42e4a; }
+.celebrate .special { margin-top: 6px; font-size: 15.5px; font-weight: 700; color: #c42e4a; max-width: 300px; }
+@media (max-width: 760px) {
+  .set-row { grid-template-columns: 1fr auto; }
+  .set-row .pieces { grid-column: 1 / -1; grid-row: 2; }
+}

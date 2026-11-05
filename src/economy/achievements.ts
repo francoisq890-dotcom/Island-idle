@@ -1,6 +1,6 @@
 import { ACHIEVEMENTS, tierFor, type AchievementDef } from '../config/achievements';
 import type { RuneStat } from '../config/runes';
-import { emptyTotals } from './runes';
+import { activeSets, completeFamilies, emptyTotals } from './runes';
 import type { GameState } from './state';
 
 export function achievementTotals(state: GameState): Record<RuneStat, number> {
@@ -27,6 +27,9 @@ export interface AchievementUnlock {
 /** Unlock every tier whose condition is met (tiers never go down). Returns the new tiers. */
 export function checkAchievements(state: GameState): AchievementUnlock[] {
   const out: AchievementUnlock[] = [];
+  const ct = state.counters;
+  ct.sets = Math.max(ct.sets, activeSets(state).length);
+  ct.families = Math.max(ct.families, completeFamilies(state));
   for (const a of ACHIEVEMENTS) {
     const have = state.achievements[a.id] ?? 0;
     if (have >= a.goals.length) continue;

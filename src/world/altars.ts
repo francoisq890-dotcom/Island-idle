@@ -25,14 +25,17 @@ export class Altar {
   private flash = 0;
   private waveT = 1;
   active = true;
+  /** 0 = dormant (Moon altar by day) … 1 = awake. */
+  awake = 1;
+  private awakeK = 1;
 
   constructor(family: FamilyId, y: number, private particles: Particles) {
     this.def = FAMILIES[family];
-    const [x, z] = this.def.altar;
+    const [x, z] = this.def.altar!;
     this.position = new THREE.Vector3(x, y, z);
     const accent = this.def.color;
-    const stone = family === 'star' ? 0xefe7f7 : family === 'ember' ? 0x6e4a48 : family === 'mist' ? 0xb9a28f : PALETTE.rock1;
-    const dark = family === 'star' ? 0xb7a2e8 : PALETTE.rock3;
+    const stone = family === 'star' ? 0xefe7f7 : family === 'ember' ? 0x6e4a48 : family === 'mist' ? 0xb9a28f : family === 'moon' ? 0xc9cfe6 : PALETTE.rock1;
+    const dark = family === 'star' ? 0xb7a2e8 : family === 'moon' ? 0x3d4170 : PALETTE.rock3;
     const parts: Part[] = [
       part(new THREE.CylinderGeometry(2.3, 2.5, 0.28, 8), dark, [0, 0.14, 0]),
       part(new THREE.CylinderGeometry(1.9, 2.1, 0.26, 8), stone, [0, 0.41, 0]),
@@ -113,14 +116,16 @@ export class Altar {
   update(dt: number, time: number): void {
     this.spin = Math.max(0, this.spin - dt * 1.4);
     this.flash = Math.max(0, this.flash - dt * 1.2);
-    this.slab.rotation.y += dt * (0.6 + this.spin * 18);
+    this.slab.rotation.y += dt * (0.6 * this.awakeK + this.spin * 18);
     this.slab.rotation.z = Math.sin(time * 0.8) * 0.12;
-    this.slab.position.y = 2.55 + Math.sin(time * 1.6) * 0.12 + this.spin * 0.4;
-    setEmitBoost(this.slabMat, 1.1 + this.flash * 2.5 + Math.sin(time * 2) * 0.15);
+    this.awakeK += (this.awake - this.awakeK) * Math.min(1, dt * 1.5);
+    const aw = this.awakeK;
+    this.slab.position.y = 1.95 + aw * 0.6 + (Math.sin(time * 1.6) * 0.12 + this.spin * 0.4) * aw;
+    setEmitBoost(this.slabMat, (0.15 + aw * 0.95) + this.flash * 2.5 + Math.sin(time * 2) * 0.15 * aw);
     this.beam.visible = this.flash > 0.01;
     this.beamMat.opacity = Math.min(0.55, this.flash * 0.45);
     this.beam.rotation.y += dt * 2;
-    this.light.intensity = (this.active ? 2 : 0.4) + this.flash * 18;
+    this.light.intensity = (this.active ? 2 : 0.4) * (0.1 + 0.9 * aw) + this.flash * 18;
     if (this.waveT < 1) {
       this.waveT = Math.min(1, this.waveT + dt * 1.1);
       const k = this.waveT;

@@ -7,7 +7,10 @@
  */
 import { MACHINES, MACHINE_ORDER, ZONES, ZONE_ORDER, type Cost, type MachineId, type ZoneId } from '../config/economy';
 import { EVENTS } from '../config/events';
-import { FAMILY_ORDER, RARITIES, type FamilyId } from '../config/runes';
+import { ALTAR_FAMILIES, FAMILIES, RARITIES, RARITY_INDEX, RUNES, type FamilyId } from '../config/runes';
+import { GUARDIAN } from '../config/guardians';
+import { defeatGuardian, guardiansUnlocked } from './guardians';
+import { isNight } from './daynight';
 import { checkAchievements } from './achievements';
 import {
   addLumen,
@@ -28,7 +31,7 @@ import {
   type Rates,
 } from './economy';
 import { OBJECTIVES } from './objectives';
-import { altarUpgradeCost, autoRollAllowed, buyAltarUpgrade, bulkOf, cooldownOf, doRoll, familyUnlocked, luckOf, rarityChances, rollCostOf, runeFor } from './runes';
+import { altarUpgradeCost, autoRollAllowed, buyAltarUpgrade, bulkOf, canFuse, cooldownOf, doRoll, familyUnlocked, fuse, luckOf, rarityChances, rollCostOf, runeFor } from './runes';
 import { createInitialState, type GameState } from './state';
 import { mulberry32 } from '../core/noise';
 
@@ -49,6 +52,8 @@ export interface SimResult {
   maxGapAt: number;
   purchases: number;
   rolls: number;
+  guardians: number;
+  fusions: number;
   /** Share of production coming from rune + achievement bonuses at the end. */
   bonusProd: number;
   final: GameState;
@@ -97,7 +102,7 @@ function candidates(state: GameState, noRunes: boolean, rollReady: boolean): Can
   for (const id of MACHINE_ORDER) if (isMachineAvailable(state, id)) out.push({ kind: 'machine', id, cost: nextMachineCost(state, id) });
   for (const u of visibleUpgrades(state)) out.push({ kind: 'upgrade', id: u.id, cost: u.cost });
   for (const z of ZONE_ORDER) if (canUnlockZone(state, z)) out.push({ kind: 'zone', id: z, cost: ZONES[z].cost });
-  if (!noRunes && rollReady) for (const f of FAMILY_ORDER) if (familyUnlocked(state, f)) out.push({ kind: 'roll', id: f, cost: rollCostOf(state, f) });
+  if (!noRunes && rollReady) for (const f of ALTAR_FAMILIES) if (familyUnlocked(state, f) && (!FAMILIES[f].nightOnly || isNight(state))) out.push({ kind: 'roll', id: f, cost: rollCostOf(state, f) });
   return out;
 }
 
@@ -194,6 +199,9 @@ export function simulateRun(opts: SimOptions = {}): SimResult {
   let rollTimer = 0;
   let nextMeteor = (EVENTS.meteor.first[0] + EVENTS.meteor.first[1]) / 2;
   let nextGolden = (EVENTS.golden.first[0] + EVENTS.golden.first[1]) / 2;
+  let nextGuardian = -1;
+  let guardians = 0;
+  let fusions = 0;
   let rolls = 0;
 
   const note = (t: number, what: string) => {
@@ -248,6 +256,21 @@ export function simulateRun(opts: SimOptions = {}): SimResult {
       }
     }
 
+    // Crystal guardians: an active player breaks most of them, an idle one misses them.
+    if (!noRunes && guardiansUnlocked(state)) {
+      if (nextGuardian < 0) nextGuardian = (state.counters.guardians === 0 ? (GUARDIAN.first[0] + GUARDIAN.first[1]) / 2 : (GUARDIAN.every[0] + GUARDIAN.every[1]) / 2);
+      nextGuardian -= dt * (isNight(state) ? GUARDIAN.nightRate : 1);
+      if (nextGuardian <= 0) {
+        nextGuardian = (GUARDIAN.every[0] + GUARDIAN.every[1]) / 2;
+        const strikes = cps * Math.min(1.6, rates.strikeSpeed);
+        const fight = GUARDIAN.hp / Math.max(0.1, strikes * (1 + rates.critChance)) + 3;
+        if (clicking && fight < GUARDIAN.time && rng() < catchRate) {
+          defeatGuardian(state, rates, fight, rng);
+          guardians++;
+        }
+      }
+    }
+
     // Tutorial rewards (the bot "walks" instantly).
     state.flags.nearCrystal = true;
     while (objective < OBJECTIVES.length) {
@@ -262,6 +285,15 @@ export function simulateRun(opts: SimOptions = {}): SimResult {
 
     const everySecond = tickN % Math.round(1 / dt) === 0;
     if (everySecond) {
+      // Fusion: always fuse the rarest duplicates first.
+      if (!noRunes && state.fragments > 0) {
+        for (const def of [...RUNES].sort((a, b) => RARITY_INDEX[b.rarity] - RARITY_INDEX[a.rarity])) {
+          while (canFuse(state, def, 1)) {
+            fuse(state, def, 1);
+            fusions++;
+          }
+        }
+      }
       checkAchievements(state);
       if (!noRunes) {
         const a = buyAltar(state, rates.shards + rates.click * cps);
@@ -270,7 +302,7 @@ export function simulateRun(opts: SimOptions = {}): SimResult {
     }
     // Auto-roll (when unlocked): the best family, with the reserve rule.
     if (!noRunes && state.altar.auto && rollTimer <= 0) {
-      const fam = [...FAMILY_ORDER].reverse().find((f) => familyUnlocked(state, f) && autoRollAllowed(state, f, rates));
+      const fam = [...ALTAR_FAMILIES].reverse().find((f) => familyUnlocked(state, f) && autoRollAllowed(state, f, rates));
       if (fam && doRoll(state, fam, rng).length) {
         rolls++;
         rollTimer = cooldownOf(state);
@@ -328,6 +360,8 @@ export function simulateRun(opts: SimOptions = {}): SimResult {
     maxGapAt,
     purchases,
     rolls,
+    guardians,
+    fusions,
     bonusProd: fr.bonus.prod,
     final: state,
   };

@@ -20,7 +20,7 @@ import {
 } from '../config/economy';
 import { createInitialState, emptyMachines, type GameState } from './state';
 import { bonusTotals, type BonusTotals } from './bonuses';
-import { runesAfterPrestige } from './runes';
+import { hasSpecial, runesAfterPrestige } from './runes';
 import { advanceClock } from './daynight';
 import { CONSTELLATIONS, hasPerk } from '../config/constellations';
 
@@ -59,6 +59,11 @@ export interface Rates {
   offlineMult: number;
   /** Multiplier on machine prices (≤ 1). */
   costMult: number;
+  /** Mythic specials: echo strike (×0.5 a moment later), phoenix (crit → 3 crits). */
+  echo: boolean;
+  phoenix: boolean;
+  /** Multiplier on fragments gained. */
+  fragMult: number;
 }
 
 const UPGRADE_BY_ID = new Map(UPGRADES.map((u) => [u.id, u]));
@@ -209,6 +214,9 @@ export function computeRates(state: GameState): Rates {
     strikeSpeed: 1 + bonus.speed,
     offlineMult: 1 + bonus.offline,
     costMult: 1 - bonus.cost,
+    echo: hasSpecial(state, 'echo'),
+    phoenix: hasSpecial(state, 'phoenix'),
+    fragMult: 1 + bonus.frag,
   };
 }
 
@@ -240,12 +248,14 @@ export function tick(state: GameState, dt: number, rates = computeRates(state)):
 }
 
 /** One manual strike on a crystal, with a chance of a critical hit. */
-export function harvestEx(state: GameState, rates = computeRates(state), rng: () => number = Math.random): { value: number; crit: boolean } {
-  const crit = rates.critChance > 0 && rng() < rates.critChance;
-  const v = rates.click * (crit ? CRIT_MULT : 1);
+export function harvestEx(state: GameState, rates = computeRates(state), rng: () => number = Math.random, opts: { forceCrit?: boolean; scale?: number; echo?: boolean } = {}): { value: number; crit: boolean } {
+  const crit = !!opts.forceCrit || (rates.critChance > 0 && rng() < rates.critChance);
+  const v = rates.click * (crit ? CRIT_MULT : 1) * (opts.scale ?? 1);
   addShards(state, v);
-  state.stats.harvests += 1;
-  state.stats.allTimeHarvests += 1;
+  if (!opts.echo) {
+    state.stats.harvests += 1;
+    state.stats.allTimeHarvests += 1;
+  }
   if (crit) state.counters.crits += 1;
   if (v > state.counters.bestHit) state.counters.bestHit = v;
   return { value: v, crit };
@@ -340,7 +350,7 @@ export function doPrestige(state: GameState): number {
   state.runes = runesAfterPrestige(state.runes);
   // Altar upgrades reset, the automatic roll (quality of life) is kept.
   state.altar = { luck: 0, bulk: 0, speed: 0, auto: state.altar.auto };
-  state.familyRolls = { stone: 0, ember: 0, mist: 0, star: 0 };
+  state.familyRolls = { ...fresh.familyRolls };
   state.shards = 0;
   state.lumen = 0;
   state.machines = emptyMachines();

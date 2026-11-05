@@ -6,6 +6,10 @@ import type { Cost } from '../config/economy';
 import {
   ALTAR_UPGRADES,
   FAMILIES,
+  FAMILY_ORDER,
+  FUSE,
+  PITY,
+  RUNE_SETS,
   RARITIES,
   RARITY_INDEX,
   ROLL,
@@ -17,6 +21,8 @@ import {
   type FamilyId,
   type RarityId,
   type RuneDef,
+  type RuneSetDef,
+  type RuneSpecial,
   type RuneStat,
 } from '../config/runes';
 import type { GameState } from './state';
@@ -44,6 +50,7 @@ export function runeTotals(state: GameState): RuneTotals {
     t[def.stat] += stacked(def.value, n);
     if (def.stat2 && def.value2) t[def.stat2] += stacked(def.value2, n);
   }
+  for (const set of RUNE_SETS) if (setComplete(state, set)) t[set.stat] += set.value;
   for (const k in STAT_CAP) {
     const key = k as RuneStat;
     t[key] = Math.min(t[key], STAT_CAP[key]!);
@@ -130,6 +137,9 @@ export function autoRollAllowed(state: GameState, family: FamilyId, rates: { sha
 }
 
 export function canRoll(state: GameState, family: FamilyId): boolean {
+  const f = FAMILIES[family];
+  if (!f.altar) return false;
+  if (f.nightOnly && !isNight(state)) return false;
   return familyUnlocked(state, family) && affordable(state, rollCostOf(state, family));
 }
 
@@ -143,19 +153,117 @@ export function doRoll(state: GameState, family: FamilyId, rng: () => number = M
   const totals = bonusTotals(state);
   const luck = luckOf(state, totals);
   const n = bulkOf(state, totals);
-  const out: RuneDef[] = [];
-  for (let i = 0; i < n; i++) {
-    const def = runeFor(family, rollRarity(luck, rng));
-    state.runes[def.id] = (state.runes[def.id] ?? 0) + 1;
-    state.runeIndex[def.id] = true;
-    out.push(def);
-    const ri = RARITY_INDEX[def.rarity];
-    if (ri > state.runeStats.best) state.runeStats.best = ri;
-  }
+  const out = drawRunes(state, family, n, luck, rng, true);
   state.runeStats.rolls += 1;
   state.runeStats.runes += n;
   if (isNight(state)) state.counters.nightRolls += 1;
   return out;
+}
+
+/**
+ * Draw `n` runes of a family into the collection. With `pity`, the first rune
+ * is upgraded when the pity counters say so, and the counters advance.
+ */
+export function drawRunes(state: GameState, family: FamilyId, n: number, luck: number, rng: () => number, pity: boolean): RuneDef[] {
+  const out: RuneDef[] = [];
+  let best = -1;
+  for (let i = 0; i < n; i++) {
+    let ri = RARITY_INDEX[rollRarity(luck, rng)];
+    if (pity && i === 0) {
+      const want = state.pity.legendary + 1 >= PITY.legendary ? RARITY_INDEX.legendary : state.pity.epic + 1 >= PITY.epic ? RARITY_INDEX.epic : -1;
+      if (want > ri) {
+        ri = want;
+        state.counters.pity += 1;
+      }
+    }
+    best = Math.max(best, ri);
+    out.push(addRune(state, runeFor(family, RARITIES[ri].id)));
+  }
+  if (pity) {
+    state.pity.epic = best >= RARITY_INDEX.epic ? 0 : state.pity.epic + 1;
+    state.pity.legendary = best >= RARITY_INDEX.legendary ? 0 : state.pity.legendary + 1;
+  }
+  return out;
+}
+
+function addRune(state: GameState, def: RuneDef): RuneDef {
+  state.runes[def.id] = (state.runes[def.id] ?? 0) + 1;
+  state.runeIndex[def.id] = true;
+  const ri = RARITY_INDEX[def.rarity];
+  if (ri > state.runeStats.best) state.runeStats.best = ri;
+  return def;
+}
+
+// --- Fusion -------------------------------------------------------------------
+
+/** Fragments needed to fuse a rune (null: this rarity cannot be fused). */
+export function fuseCost(def: RuneDef, fragMult = 1): number | null {
+  const ri = RARITY_INDEX[def.rarity];
+  const f = FUSE.fragments[ri];
+  return f === undefined ? null : Math.ceil(f * fragMult);
+}
+
+/** The rune a fusion of `def` gives. */
+export function fuseResult(def: RuneDef): RuneDef | null {
+  const ri = RARITY_INDEX[def.rarity];
+  if (FUSE.fragments[ri] === undefined) return null;
+  return runeFor(def.family, RARITIES[ri + 1].id);
+}
+
+export function canFuse(state: GameState, def: RuneDef, fragMult = 1): boolean {
+  const c = fuseCost(def, fragMult);
+  return c !== null && (state.runes[def.id] ?? 0) >= FUSE.copies && state.fragments >= c - 1e-9;
+}
+
+/** Fuse FUSE.copies copies of `def` (+ fragments) into one rune of the next rarity. */
+export function fuse(state: GameState, def: RuneDef, fragMult = 1): RuneDef | null {
+  if (!canFuse(state, def, fragMult)) return null;
+  const out = fuseResult(def)!;
+  state.fragments -= fuseCost(def, fragMult)!;
+  state.runes[def.id] -= FUSE.copies;
+  if (state.runes[def.id] <= 0) delete state.runes[def.id];
+  addRune(state, out);
+  state.counters.fusions += 1;
+  return out;
+}
+
+// --- Sets ---------------------------------------------------------------------
+
+function hasPiece(state: GameState, p: RuneSetDef['pieces'][number]): boolean {
+  if (p.rune) return (state.runes[p.rune] ?? 0) > 0;
+  const min = RARITY_INDEX[p.minRarity ?? 'common'];
+  return RUNES.some((r) => r.family === p.family && RARITY_INDEX[r.rarity] >= min && (state.runes[r.id] ?? 0) > 0);
+}
+
+export function setComplete(state: GameState, set: RuneSetDef): boolean {
+  return set.pieces.every((p) => hasPiece(state, p));
+}
+
+export function setProgress(state: GameState, set: RuneSetDef): [number, number] {
+  return [set.pieces.filter((p) => hasPiece(state, p)).length, set.pieces.length];
+}
+
+export function activeSets(state: GameState): RuneSetDef[] {
+  return RUNE_SETS.filter((x) => setComplete(state, x));
+}
+
+/** Families whose runes from common to legendary have all been found. */
+export function completeFamilies(state: GameState): number {
+  return FAMILY_ORDER.filter((f) => RUNES.every((r) => r.family !== f || RARITY_INDEX[r.rarity] > RARITY_INDEX.legendary || state.runeIndex[r.id])).length;
+}
+
+// --- Mythic specials ------------------------------------------------------------
+
+export function hasSpecial(state: GameState, sp: RuneSpecial): boolean {
+  for (const id in state.runes) if ((state.runes[id] ?? 0) > 0 && RUNE_BY_ID.get(id)?.special === sp) return true;
+  return false;
+}
+
+// --- Guardian loot --------------------------------------------------------------
+
+/** Warden runes dropped by a guardian (rolled with the current luck, no pity). */
+export function dropWardenRunes(state: GameState, n: number, rng: () => number = Math.random): RuneDef[] {
+  return drawRunes(state, 'warden', n, luckOf(state), rng, false);
 }
 
 // --- Altar upgrades -----------------------------------------------------------

@@ -430,6 +430,44 @@ export class Audio {
     this.tone(55, { type: 'sine', attack: 0.5, decay: 3.5, gain: 0.25, glide: 0.5 });
   }
 
+  // --- Guardians --------------------------------------------------------------
+
+  /** Ground rumble and a low crystalline groan. */
+  guardianAppear(): void {
+    this.noise({ freq: 120, q: 0.6, decay: 1.4, gain: 0.35, type: 'lowpass', sweep: 0.5 });
+    this.tone(55, { type: 'sawtooth', attack: 0.2, decay: 1.2, gain: 0.08, glide: 1.4 });
+    [79, 82, 86].forEach((n, i) => this.tone(this.midi(n), { type: 'sine', attack: 0.02, decay: 0.9, gain: 0.03, when: 0.4 + i * 0.12, reverb: 1 }));
+  }
+
+  /** Rock-and-glass impact; crits ring higher. Pitch varies on every hit. */
+  guardianHit(crit: boolean): void {
+    const v = 0.92 + Math.random() * 0.16;
+    this.noise({ freq: 900 * v, q: 1.2, decay: 0.12, gain: 0.22, type: 'bandpass' });
+    this.tone(140 * v, { type: 'triangle', attack: 0.002, decay: 0.18, gain: 0.18, glide: 0.6 });
+    this.tone(this.midi(crit ? 88 : 81) * v, { type: 'sine', attack: 0.002, decay: 0.4, gain: crit ? 0.06 : 0.035, reverb: 0.6 });
+  }
+
+  /** Slam: deep thud and a sweeping whoosh for the shockwave. */
+  guardianSlam(): void {
+    this.tone(48, { type: 'sine', attack: 0.005, decay: 0.7, gain: 0.45, glide: 0.5 });
+    this.noise({ freq: 300, q: 0.5, decay: 0.9, gain: 0.3, type: 'lowpass', sweep: 4 });
+  }
+
+  dodge(): void {
+    this.tone(this.midi(84), { type: 'triangle', attack: 0.005, decay: 0.15, gain: 0.05, glide: 1.5 });
+  }
+
+  /** Shatter: a cascade of glassy notes over a rumble. */
+  guardianBreak(): void {
+    this.noise({ freq: 2500, q: 0.4, decay: 1.2, gain: 0.3, type: 'highpass' });
+    this.tone(60, { type: 'sine', attack: 0.005, decay: 1, gain: 0.4, glide: 0.4 });
+    [72, 76, 79, 84, 88, 91, 96].forEach((n, i) => this.tone(this.midi(n) * (0.99 + Math.random() * 0.02), { type: 'sine', attack: 0.002, decay: 1.2, gain: 0.05, when: 0.05 + i * 0.06, reverb: 1.2 }));
+  }
+
+  guardianLeave(): void {
+    this.noise({ freq: 160, q: 0.6, decay: 1.4, gain: 0.25, type: 'lowpass', sweep: 0.3 });
+  }
+
   /** Night falls: a low, slow chord and a high shimmer. */
   nightFall(): void {
     [50, 57, 62, 65, 69].forEach((n, i) => this.tone(this.midi(n), { type: 'sine', attack: 0.8, decay: 4, gain: 0.04, when: i * 0.25, reverb: 1.2 }));

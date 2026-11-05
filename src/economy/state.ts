@@ -60,6 +60,10 @@ export interface GameState {
   achievements: Record<string, number>;
   /** Lifetime counters (achievements, statistics). Every key is read defensively. */
   counters: Counters;
+  /** Rune fragments (fusion currency): from guardians, expeditions, the merchant. Kept on prestige. Since save v3. */
+  fragments: number;
+  /** Rolls since the last epic+ / legendary+ (pity, account-wide). */
+  pity: { epic: number; legendary: number };
   /** Game-time clock driving the day/night cycle (seconds). Since save v3. */
   clock: number;
   /** Every rune ever found (the index survives prestige). Since save v3. */
@@ -151,7 +155,9 @@ export function createInitialState(now = Date.now()): GameState {
     altar: { luck: 0, bulk: 0, speed: 0, auto: false },
     runeAuto: null,
     runeStats: { rolls: 0, runes: 0, best: -1 },
-    familyRolls: { stone: 0, ember: 0, mist: 0, star: 0 },
+    familyRolls: { stone: 0, ember: 0, mist: 0, star: 0, moon: 0, warden: 0 },
+    fragments: 0,
+    pity: { epic: 0, legendary: 0 },
     achievements: {},
     counters: emptyCounters(),
     lifetimeSeeds: 0,

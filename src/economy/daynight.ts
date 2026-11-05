@@ -4,14 +4,10 @@ import type { GameState } from './state';
 
 /** Night length for this state (talents / runes can lengthen it). */
 export function nightLength(state: GameState): number {
-  let n = DAY_NIGHT.night * nightLengthMult(state);
-  return Math.min(DAY_NIGHT.cycle * 0.6, n);
-}
-
-/** Hook for systems that lengthen the night (Éclipse rune, Oracle path). */
-export let nightLengthMult: (state: GameState) => number = () => 1;
-export function setNightLengthRule(fn: (state: GameState) => number): void {
-  nightLengthMult = fn;
+  let mult = 1;
+  // Éclipse (mythic Moon rune): the night lasts twice as long.
+  if ((state.runes.mo6 ?? 0) > 0) mult *= 2;
+  return Math.min(DAY_NIGHT.cycle * 0.6, DAY_NIGHT.night * mult);
 }
 
 /** Seconds of the current cycle when the night starts. */
