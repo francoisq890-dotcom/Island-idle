@@ -49,10 +49,15 @@ const pos = (page) => page.evaluate(() => [window.game.world.player.position.x, 
 
 /** Send key events (synthetic, so we can emulate any layout) and hold them. */
 async function hold(page, keys, ms) {
+  const start = await pos(page);
   await page.evaluate((keys) => keys.forEach((k) => window.dispatchEvent(new KeyboardEvent('keydown', { code: k.code, key: k.key }))), keys);
   await page.waitForTimeout(ms * 0.6);
   const move = await page.evaluate(() => ({ ...window.game.input.move }));
   await page.waitForTimeout(ms * 0.4);
+  // Slow CI machines render few frames: keep holding (up to 4 s) until the explorer has really moved.
+  await page
+    .waitForFunction(([x, z]) => Math.hypot(window.game.world.player.position.x - x, window.game.world.player.position.z - z) > 0.8, start, { timeout: 4000, polling: 50 })
+    .catch(() => {});
   await page.evaluate((keys) => keys.forEach((k) => window.dispatchEvent(new KeyboardEvent('keyup', { code: k.code, key: k.key }))), keys);
   await page.waitForTimeout(250);
   return move;
