@@ -32,6 +32,12 @@ export class CameraRig {
     this.distance = THREE.MathUtils.clamp(this.distance * (1 + delta * 0.1), this.minDist, this.maxDist);
   }
 
+  /** Punch-in zoom (0..1): the camera snaps closer, then eases back. */
+  private punchK = 0;
+  punch(amount: number): void {
+    this.punchK = Math.min(1, Math.max(this.punchK, amount));
+  }
+
   shake(amount: number): void {
     this.trauma = Math.min(1, this.trauma + amount);
   }
@@ -79,6 +85,15 @@ export class CameraRig {
       pos.x += noise2(t, 1.3) * 0.35 * s;
       pos.y += noise2(t, 7.1) * 0.35 * s;
       pos.z += noise2(t, 3.7) * 0.35 * s;
+    }
+    // Punch-in: pull towards the target and narrow the field of view a little.
+    this.punchK = Math.max(0, this.punchK - dt * 1.8);
+    const pk = this.punchK * this.punchK * (3 - 2 * this.punchK);
+    if (pk > 0) pos.lerp(this.lookAt, pk * 0.28);
+    const fov = ((this.camera.userData.baseFov as number | undefined) ?? 50) * (1 - pk * 0.12);
+    if (Math.abs(this.camera.fov - fov) > 1e-3) {
+      this.camera.fov = fov;
+      this.camera.updateProjectionMatrix();
     }
     this.camera.position.copy(pos);
     this.camera.lookAt(this.lookAt);

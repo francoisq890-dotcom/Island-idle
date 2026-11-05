@@ -149,7 +149,7 @@ export function makeMaterial(opts: MaterialOptions = {}): THREE.MeshStandardMate
         float rim = pow(1.0 - abs(dot(normalize(vViewPosition), normal)), 2.0);
         float band = smoothstep(0.75, 1.0, sin(vWorldP.y * 5.0 - uTime * 2.2 + vWorldP.x * 1.3));
         float spark = step(0.985, fract(sin(dot(floor(vWorldP * 9.0), vec3(12.9898, 78.233, 37.719)) + floor(uTime * 6.0)) * 43758.5453));
-        totalEmissiveRadiance += diffuseColor.rgb * vEmit * (rim * 1.4 + band * 0.9 + spark * 2.5) * uGlobalEmit;`,
+        totalEmissiveRadiance += diffuseColor.rgb * vEmit * (rim * 0.45 + band * 0.35 + spark * 1.2) * uGlobalEmit;`,
       );
     }
     shader.fragmentShader = fs;

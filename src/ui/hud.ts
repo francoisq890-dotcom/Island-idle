@@ -100,7 +100,7 @@ export class Hud {
     this.actBtn = el('button', 'touch-btn act', `${ICONS.hand}<span>Action</span>`) as HTMLButtonElement;
     pad.append(this.jumpBtn, this.actBtn);
 
-    this.root.append(this.bossEl, resources, this.objective, this.actions, this.promptEl, this.tipEl, this.floaters, this.toasts, this.compassEl, pad);
+    this.root.append(this.bossEl, this.comboEl, this.flyLayer, resources, this.objective, this.actions, this.promptEl, this.tipEl, this.floaters, this.toasts, this.compassEl, pad);
     parent.appendChild(this.root);
   }
 
@@ -117,7 +117,11 @@ export class Hud {
   setResources(shards: number, shardRate: number, lumen: number, lumenRate: number, seeds: number, showLumen: boolean, bonusPct: number): void {
     const sv = this.resShards.querySelector('.val')!;
     const sr = this.resShards.querySelector('.rate')!;
-    this.set('sv', sv, formatNumber(shards));
+    // Rolling counter: a big gain spins the number up instead of jumping.
+    if (this.shownShards < 0 || shards < this.shownShards) this.shownShards = shards;
+    else this.shownShards += (shards - this.shownShards) * Math.min(1, this.lastDt * 9) + Math.max(0, shardRate * this.lastDt);
+    if (this.shownShards > shards) this.shownShards = shards;
+    this.set('sv', sv, formatNumber(this.shownShards));
     this.set('sr', sr, shardRate > 0 ? `<b>+${formatRate(shardRate)}</b> éclats / s${this.surgeLeft > 0 ? ` · <b>Afflux ${Math.ceil(this.surgeLeft)} s</b>` : ''}` : 'Éclats');
     this.resLumen.classList.toggle('hide', !showLumen);
     this.set('lv', this.resLumen.querySelector('.val')!, formatNumber(lumen));
@@ -132,6 +136,40 @@ export class Hud {
   }
 
   private surgeLeft = 0;
+  private shownShards = -1;
+  private lastDt = 1 / 60;
+  private flyLayer = el('div', 'fly-layer');
+  private flying: { el: HTMLElement; x0: number; y0: number; t: number; life: number; to: HTMLElement; arc: number }[] = [];
+  private comboEl = el('div', 'combo', '<b></b><span class="lbl">série</span><span class="bonus"></span><i></i>');
+  private comboTimer = 0;
+  private comboWindow = 1.1;
+
+  /** A gain flies from a world point to its HUD counter. */
+  flyGain(sx: number, sy: number, kind: 'shards' | 'lumen' | 'frag' | 'seed', count = 1): void {
+    const to = kind === 'lumen' ? this.resLumen : kind === 'frag' ? this.resFrag : kind === 'seed' ? this.resSeeds : this.resShards;
+    if (to.classList.contains('hide')) return;
+    const icon = kind === 'lumen' ? ICONS.lumen : kind === 'frag' ? ICONS.fragment : kind === 'seed' ? ICONS.seed : ICONS.shard;
+    for (let i = 0; i < count && this.flying.length < 24; i++) {
+      const e = el('div', 'fly', icon);
+      this.flyLayer.appendChild(e);
+      this.flying.push({ el: e, x0: sx + (Math.random() - 0.5) * 30, y0: sy + (Math.random() - 0.5) * 30, t: -i * 0.05, life: 0.55 + Math.random() * 0.2, to, arc: (Math.random() - 0.3) * 160 });
+    }
+  }
+
+  /** Strike streak meter. `bonusPct` > 0 when the Série ardente talent turns it into a multiplier. */
+  setCombo(n: number, bonusPct: number, window = 1.1): void {
+    this.comboWindow = window;
+    this.comboTimer = window;
+    if (n < 3) return;
+    this.comboEl.classList.add('on');
+    this.comboEl.querySelector('b')!.textContent = `×${n}`;
+    (this.comboEl.querySelector('.bonus') as HTMLElement).textContent = bonusPct > 0 ? `+${Math.round(bonusPct)} %` : '';
+    const tier = n >= 100 ? 4 : n >= 50 ? 3 : n >= 25 ? 2 : n >= 10 ? 1 : 0;
+    this.comboEl.dataset.tier = String(tier);
+    this.comboEl.classList.remove('hit');
+    void this.comboEl.offsetWidth;
+    this.comboEl.classList.add('hit');
+  }
   /** Rift "Afflux": seconds left (0 = none). Shown on the shards counter. */
   setSurge(seconds: number): void {
     this.surgeLeft = seconds;
@@ -299,6 +337,33 @@ export class Hud {
   }
 
   update(dt: number): void {
+    this.lastDt = dt;
+    // Combo meter decays with the streak window.
+    if (this.comboTimer > 0) {
+      this.comboTimer = Math.max(0, this.comboTimer - dt);
+      (this.comboEl.querySelector('i') as HTMLElement).style.transform = `scaleX(${this.comboTimer / this.comboWindow})`;
+      if (this.comboTimer === 0) this.comboEl.classList.remove('on');
+    }
+    // Gains flying to the counters (ease-in, slight arc, the counter pops on arrival).
+    for (let i = this.flying.length - 1; i >= 0; i--) {
+      const f = this.flying[i];
+      f.t += dt;
+      if (f.t < 0) continue;
+      const k = Math.min(1, f.t / f.life);
+      const r = f.to.getBoundingClientRect();
+      const tx = r.left + 26;
+      const ty = r.top + r.height / 2;
+      const e = k * k;
+      const x = f.x0 + (tx - f.x0) * e + Math.sin(k * Math.PI) * f.arc * 0.3;
+      const y = f.y0 + (ty - f.y0) * e - Math.sin(k * Math.PI) * 60;
+      f.el.style.transform = `translate(${x}px, ${y}px) scale(${1.1 - k * 0.5})`;
+      f.el.style.opacity = String(k < 0.1 ? k * 10 : 1);
+      if (k >= 1) {
+        f.el.remove();
+        this.flying.splice(i, 1);
+        this.bump(f.to);
+      }
+    }
     for (let i = this.floats.length - 1; i >= 0; i--) {
       const f = this.floats[i];
       f.t += dt;

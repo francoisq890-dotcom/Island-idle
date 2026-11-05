@@ -323,6 +323,7 @@ export class Renderer {
     const h = window.innerHeight;
     this.camera.aspect = w / h;
     this.camera.fov = w < h ? 62 : 50;
+    this.camera.userData.baseFov = this.camera.fov;
     this.camera.updateProjectionMatrix();
     this.renderer.setPixelRatio(this.pixelRatio);
     this.renderer.setSize(w, h);

@@ -492,6 +492,7 @@ export class Game {
     const k = nightAmount(s);
     this.renderer.setNight(k);
     this.audio.night = k;
+    this.audio.intensity = Math.min(1, Math.log10(1 + Math.max(0, this.rates.shards)) / 12);
     const night = isNight(s);
     if (this.wasNight !== null && night !== this.wasNight) this.markDirty();
     if (this.wasNight !== null && night !== this.wasNight && this.started && !this.busy) {
@@ -584,6 +585,23 @@ export class Game {
     if (this.jumpTimes.length >= 15) this.secret('sec_bunny');
   }
 
+  private flyTmp = { x: 0, y: 0, visible: false };
+  /** A gain flies from a world point to its HUD counter. */
+  private fly(at: THREE.Vector3, kind: 'shards' | 'lumen' | 'frag' | 'seed', count = 1): void {
+    this.world.project(at, this.flyTmp);
+    if (this.flyTmp.visible) this.hud.flyGain(this.flyTmp.x, this.flyTmp.y, kind, count);
+  }
+
+  /** Phone vibration for important moments (touch devices only). */
+  private haptic(pattern: number | number[]): void {
+    if (!this.input.isTouch || this.state.settings.muted) return;
+    try {
+      navigator.vibrate?.(pattern);
+    } catch {
+      /* not supported */
+    }
+  }
+
   /** Unlock a secret achievement flag (checked by afterProgress). */
   private secret(flag: string): void {
     if (this.state.flags[flag]) return;
@@ -658,6 +676,7 @@ export class Game {
     this.lastHitTime = this.time;
     const n = this.combo;
     if (n > this.state.counters.bestCombo) this.state.counters.bestCombo = n;
+    this.hud.setCombo(n, Math.min(this.rates.streakCap, n * 0.01) * 100);
     // Voie de la Pioche: every 25 chained strikes, a wave of shards worth 10 strikes.
     if (pickPath(this.state) && n % 25 === 0) {
       const v = this.rates.click * 10;
@@ -698,6 +717,8 @@ export class Game {
       this.bumpCombo();
       this.audio.harvest(this.world.player.pickTierIndex);
       const hp = this.world.impactPoint();
+      this.fly(hp, 'shards', crit ? 4 : 1);
+      if (crit) this.haptic(15);
       if (crit) {
         this.audio.crit();
         this.world.rig.shake(0.45);
@@ -766,6 +787,8 @@ export class Game {
     for (const m of MILESTONES) {
       if (before < m && after >= m) {
         this.audio.milestone();
+        this.world.player.cheer();
+        this.haptic(30);
         this.hud.toast(MACHINE_ICON[id], `Palier ${m} atteint !`, `${MACHINES[id].plural} : production ×2 (total ×${milestoneMult(after)})`, 'gold');
         const c = site.slotPosition(0);
         this.world.particles.sparks(c.clone().setY(c.y + 2), { count: 60, color: PALETTE.lumen, speed: 8, life: 1.2, size: 0.12, up: 4 });
@@ -823,6 +846,7 @@ export class Game {
     const camPos = mid.clone().addScaledVector(side, 14).add(new THREE.Vector3(0, 7, 0)).addScaledVector(dir, -4);
     this.cinematic(camPos, mid, 3.2).then(() => {
       this.audio.bridgeDone();
+      this.world.player.cheer();
       this.hud.toast('bridge', `${ZONES[id].name} accessible !`, ZONES[id].blurb, 'gold');
       this.checkObjectives();
     });
@@ -876,6 +900,9 @@ export class Game {
     }
     const r = RARITIES[best];
     if (r.celebrate >= 3) {
+      this.world.rig.punch(r.celebrate >= 4 ? 0.9 : 0.6);
+      this.haptic(r.celebrate >= 4 ? [60, 40, 60, 40, 120] : [40, 30, 60]);
+      this.world.player.cheer();
       this.celebration.show(bestDef, this.state.runes[bestDef.id]);
       this.slowMo(r.celebrate >= 4 ? 2.4 : 1.4, r.celebrate >= 4 ? 0.2 : 0.35);
       this.renderer.setFlashColor(r.color);
@@ -1066,6 +1093,11 @@ export class Game {
     // Remaining expeditions shift down: resync the ships.
     for (let k = 0; k < 2; k++) this.world.dock.setShip(k, this.shipState(k));
     this.audio.goldenBreak();
+    this.world.player.cheer();
+    const dp = this.world.dock.position.clone().setY(this.world.dock.position.y + 2);
+    this.fly(dp, 'shards', 5);
+    this.fly(dp, 'lumen', 4);
+    this.fly(dp, 'frag', 3);
     const L = res.loot;
     const names = res.runes.map((r) => r.name).join(', ');
     this.hud.toast('airship', 'Butin d’expédition !', `+${formatNumber(L.shards)} éclats · +${formatNumber(L.lumen)} Lumen · +${L.fragments} fragments${names ? ` · ${names}` : ''}${res.egg ? ' · un œuf !' : ''}`, 'gold');
@@ -1276,6 +1308,11 @@ export class Game {
     this.audio.guardianBreak();
     this.slowMo(0.9, 0.3);
     this.world.rig.shake(0.8);
+    this.world.rig.punch(0.6);
+    this.haptic([40, 40, 80]);
+    this.world.player.cheer();
+    this.fly(g.position.clone().setY(g.position.y + 1.5), 'frag', 6);
+    this.fly(g.position.clone().setY(g.position.y + 1.5), 'shards', 6);
     this.renderer.setFlashColor(0xf08cb0);
     this.tweens.add(0.9, (v) => (this.renderer.flash = 0.35 * (1 - v)), { ease: Ease.outCubic });
     const at = g.position;
@@ -1336,6 +1373,7 @@ export class Game {
     addShards(this.state, v);
     this.state.counters.meteors++;
     this.audio.pickup();
+    this.fly(at, 'shards', 3);
     this.hud.float(at.x, at.y + 1.2, at.z, `+${formatNumber(v)}${ICONS.shard}`, 'big', 1.2);
     this.afterProgress();
   }
@@ -1374,6 +1412,10 @@ export class Game {
           this.goldenIt.active = false;
           this.audio.goldenBreak();
           this.world.rig.shake(0.6);
+          this.world.rig.punch(0.35);
+          this.fly(at, 'shards', 8);
+          this.haptic([20, 30, 40]);
+          this.world.player.cheer();
           this.hud.float(at.x, at.y + 3.2, at.z, `+${formatNumber(big)}${ICONS.shard}`, 'huge lumen', 2);
           this.hud.toast('lumen', 'Cristal doré brisé !', `+${formatNumber(big)} éclats${lum > 0 ? ` et +${formatNumber(lum)} Lumen` : ''}`, 'gold');
           this.afterProgress();
@@ -1418,6 +1460,7 @@ export class Game {
     // Several tiers at once (e.g. after a big jump): one toast per achievement, highest tier.
     const best = new Map<string, AchievementUnlock>();
     for (const u of got) best.set(u.def.id, u);
+    if ([...best.values()].some((u) => u.tier >= 3)) this.world.player.cheer();
     for (const u of best.values()) {
       const d = u.def;
       const tier = d.goals.length > 1 ? ` (${TIER_NAMES[u.tier - 1]})` : '';
@@ -1458,6 +1501,7 @@ export class Game {
     const c = rig.cinematic;
     await new Promise<void>((r) => this.tweens.add(1.6, (v) => (c.weight = v), { ease: Ease.inOutCubic, done: r }));
     this.audio.prestige();
+    this.haptic([80, 60, 160]);
     this.world.lighthouse.setAwake(true);
     this.renderer.setFlashColor(PALETTE.seed);
     this.world.particles.sparks(this.world.lighthouse.topPosition, { count: 120, color: PALETTE.seed, speed: 12, life: 2, size: 0.18, up: 4, gravity: 2 });

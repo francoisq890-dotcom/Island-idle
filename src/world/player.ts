@@ -71,6 +71,11 @@ export class Player {
   private ground: Ground | null = null;
   private hitStop = 0;
   private present = 0;
+  /** Squash & stretch: >0 stretched (take-off), <0 squashed (landing). Springs back to 0. */
+  private squash = 0;
+  private squashV = 0;
+  /** Little celebration (arms up, hop) after big moments. */
+  private cheerT = 0;
   /** Multiplier on strike animation speed (runes / upgrades). */
   strikeSpeed = 1;
   /** Called when the downswing starts (swoosh sound). */
@@ -265,6 +270,18 @@ export class Player {
     if (this.grounded) {
       this.vy = JUMP;
       this.grounded = false;
+      this.squash = 0.22;
+      this.squashV = 0;
+    }
+  }
+
+  /** Short celebration: a hop with both arms raised (milestones, bridges, big purchases). */
+  cheer(): void {
+    if (this.present > 0 || this.strikePhase !== 'idle') return;
+    this.cheerT = 0.9;
+    if (this.grounded) {
+      this.vy = JUMP * 0.55;
+      this.grounded = false;
     }
   }
 
@@ -311,6 +328,9 @@ export class Player {
       if (this.position.y <= gy) {
         this.position.y = gy;
         this.grounded = true;
+        // Landing squash, stronger after a long fall.
+        this.squash = -Math.min(0.35, 0.12 + Math.abs(this.vy) * 0.02);
+        this.squashV = 0;
         this.vy = 0;
         this.onLand?.(this.position);
       }
@@ -359,6 +379,25 @@ export class Player {
       if (this.stepAcc > 1.05) {
         this.stepAcc = 0;
         this.onStep?.(this.position);
+      }
+    }
+
+    // Squash & stretch spring (volume preserving).
+    this.squashV += (-this.squash * 220 - this.squashV * 16) * dt;
+    this.squash += this.squashV * dt;
+    if (!this.grounded && this.vy > 0) this.squash = Math.max(this.squash, Math.min(0.15, this.vy * 0.02));
+    const sy = 1 + this.squash;
+    const sxz = 1 / Math.sqrt(Math.max(0.5, sy));
+    this.root.scale.set(sxz, sy, sxz);
+    // Celebration: arms up and waving.
+    if (this.cheerT > 0) {
+      this.cheerT = Math.max(0, this.cheerT - dt);
+      const c = Math.sin((this.cheerT / 0.9) * Math.PI);
+      this.armL.rotation.x = 2.7 * c;
+      this.armL.rotation.z = -0.5 * c + Math.sin(time * 18) * 0.25 * c;
+      if (this.strikePhase === 'idle' && this.present <= 0) {
+        this.armR.rotation.x = 2.7 * c;
+        this.armR.rotation.z = 0.5 * c - Math.sin(time * 18) * 0.25 * c;
       }
     }
 

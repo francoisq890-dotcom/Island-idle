@@ -91,10 +91,11 @@ export class Audio {
     const osc = ctx.createOscillator();
     osc.type = opts.type ?? 'sine';
     osc.frequency.setValueAtTime(freq, t);
-    if (opts.detune) osc.detune.value = opts.detune;
+    // Never the exact same sound twice: a few cents of detune and a little gain jitter.
+    osc.detune.value = (opts.detune ?? 0) + (Math.random() - 0.5) * 14;
     if (opts.glide) osc.frequency.exponentialRampToValueAtTime(Math.max(20, freq * opts.glide), t + (opts.decay ?? 0.3));
     const g = ctx.createGain();
-    const peak = opts.gain ?? 0.2;
+    const peak = (opts.gain ?? 0.2) * (0.9 + Math.random() * 0.2);
     g.gain.setValueAtTime(0, t);
     g.gain.linearRampToValueAtTime(peak, t + (opts.attack ?? 0.005));
     g.gain.exponentialRampToValueAtTime(0.0001, t + (opts.attack ?? 0.005) + (opts.decay ?? 0.3));
@@ -118,11 +119,12 @@ export class Audio {
     src.buffer = this.noiseBuf;
     const f = ctx.createBiquadFilter();
     f.type = opts.type ?? 'bandpass';
-    f.frequency.setValueAtTime(opts.freq, t);
-    if (opts.sweep) f.frequency.exponentialRampToValueAtTime(opts.freq * opts.sweep, t + opts.decay);
+    const fq = opts.freq * (0.95 + Math.random() * 0.1);
+    f.frequency.setValueAtTime(fq, t);
+    if (opts.sweep) f.frequency.exponentialRampToValueAtTime(fq * opts.sweep, t + opts.decay);
     f.Q.value = opts.q ?? 1;
     const g = ctx.createGain();
-    g.gain.setValueAtTime(opts.gain, t);
+    g.gain.setValueAtTime(opts.gain * (0.9 + Math.random() * 0.2), t);
     g.gain.exponentialRampToValueAtTime(0.0001, t + opts.decay);
     src.connect(f);
     f.connect(g);
@@ -147,6 +149,8 @@ export class Audio {
   private ambZone = 'home';
   /** 0 = day … 1 = night (crickets replace birds). */
   night = 0;
+  /** 0..1 musical intensity from the production level: layers join as it grows. */
+  intensity = 0;
   private cricketTimer = 1;
 
   ambZoneOr(fallback: string): string {
@@ -573,6 +577,17 @@ export class Audio {
     const playBar = () => {
       if (!this.ctx) return;
       const ch = chords[bar % chords.length];
+      const L = this.intensity;
+      const nightK = this.night;
+      // Layer 2 (production > ~1K/s): a soft plucked bass on the beats.
+      if (L > 0.2) for (let b = 0; b < 4; b++) this.tone(this.midi(ch[0] - 12), { type: 'triangle', attack: 0.01, decay: 1.1, gain: 0.035 * Math.min(1, (L - 0.2) * 3), when: b * (barLen / 4), dest: this.music });
+      // Layer 3 (~1M/s): a gentle arpeggio climbing the chord.
+      if (L > 0.45) {
+        const steps = 8;
+        for (let i = 0; i < steps; i++) this.tone(this.midi(ch[(i * 2) % ch.length] + 12), { type: 'sine', attack: 0.005, decay: 0.5, gain: 0.012 * Math.min(1, (L - 0.45) * 3), when: 0.2 + i * (barLen / steps), dest: this.music, reverb: 0.5 });
+      }
+      // Layer 4 (~1B/s and beyond): high shimmering bells; at night they turn to soft glass.
+      if (L > 0.7) for (let i = 0; i < 3; i++) this.tone(this.midi(ch[i + 1] + 24), { type: nightK > 0.5 ? 'sine' : 'triangle', attack: 0.3, decay: 2.4, gain: 0.008 * Math.min(1, (L - 0.7) * 3), when: i * 1.7, dest: this.music, reverb: 1.4 });
       for (const n of ch) {
         this.tone(this.midi(n), { type: 'sine', attack: 1.6, decay: barLen + 1.5, gain: 0.03, dest: this.music, reverb: 0.4, detune: (Math.random() - 0.5) * 8 });
         this.tone(this.midi(n + 12), { type: 'triangle', attack: 2.2, decay: barLen, gain: 0.006, dest: this.music, detune: 6 });

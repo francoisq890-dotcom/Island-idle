@@ -234,8 +234,10 @@ export class Conveyors {
       for (let i = 0; i < b.items.length && n < max; i++) {
         const u = b.items[i];
         this.pointAt(b, u, p);
-        tmpObj.position.set(p.x, p.y + 0.14 + Math.abs(Math.sin(u * 4)) * 0.02, p.z);
-        tmpObj.rotation.set(0, u * 0.8, 0);
+        // Cubes hop over the rollers and tumble a little.
+        const hop = Math.abs(Math.sin(u * 6.3 + i * 1.7));
+        tmpObj.position.set(p.x, p.y + 0.14 + hop * hop * 0.08, p.z);
+        tmpObj.rotation.set(Math.sin(u * 3.1 + i) * 0.35, u * 0.8, Math.cos(u * 2.7 + i) * 0.25);
         const s = Math.min(1, u * 3, (b.length - u) * 4 + 0.2);
         tmpObj.scale.setScalar(s);
         tmpObj.updateMatrix();

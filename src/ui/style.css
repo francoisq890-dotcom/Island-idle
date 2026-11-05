@@ -790,3 +790,26 @@ table.odds .ef { color: var(--ink-soft); font-size: 14px; }
 .row.challenge .tag.away { background: var(--violet); color: #fff; }
 .challenge-now { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 10px; margin: 6px 0; border-radius: 6px; background: rgba(111,69,184,.14); font-size: 14px; }
 .panel.ascension .compare { margin-top: 8px; }
+
+/* Game feel: flying gains, combo meter, button bounce ------------------------ */
+.fly-layer { position: absolute; inset: 0; pointer-events: none !important; overflow: hidden; z-index: 4; }
+.fly { position: absolute; left: 0; top: 0; width: 22px; height: 22px; margin: -11px; will-change: transform; filter: drop-shadow(0 0 6px rgba(82,240,255,.9)); }
+.fly .ico { width: 22px; height: 22px; }
+.combo { position: absolute; right: 22%; top: 44%; display: flex; flex-direction: column; align-items: center; pointer-events: none !important; opacity: 0; transform: scale(.6) rotate(-6deg); transition: opacity .2s, transform .25s cubic-bezier(.2,1.6,.4,1); --cc: #fff6dc; }
+.combo.on { opacity: 1; transform: scale(1) rotate(-6deg); }
+.combo b { font: 800 40px var(--display); color: var(--cc); -webkit-text-stroke: 2px #3a2410; paint-order: stroke; text-shadow: 0 3px 0 #3a2410, 0 0 22px rgba(255,190,59,.6); line-height: 1; }
+.combo .lbl { font: 800 13px var(--text); letter-spacing: .3em; text-transform: uppercase; color: #fff6dc; text-shadow: 0 1px 0 #3a2410; }
+.combo .bonus { font: 800 14px var(--text); color: #ffd27a; text-shadow: 0 1px 0 #3a2410; min-height: 1em; }
+.combo i { width: 70px; height: 4px; border-radius: 2px; background: #ffd27a; transform-origin: left; box-shadow: 0 1px 0 #3a2410; }
+.combo.hit b { animation: comboHit .18s ease-out; }
+@keyframes comboHit { 0% { transform: scale(1.35); } 100% { transform: scale(1); } }
+.combo[data-tier="1"] { --cc: #c4fbff; }
+.combo[data-tier="2"] { --cc: #ffd27a; }
+.combo[data-tier="3"] { --cc: #ffb3cd; }
+.combo[data-tier="3"] b, .combo[data-tier="4"] b { animation: comboShake .12s linear infinite; }
+.combo[data-tier="4"] { --cc: #e6d6ff; }
+.combo[data-tier="4"] b { text-shadow: 0 3px 0 #3a2410, 0 0 30px #c59bff; }
+@keyframes comboShake { 25% { translate: 1px -1px; } 75% { translate: -1px 1px; } }
+.btn, .seal, .pill-btn, .tcost, .chip { transition: transform .18s cubic-bezier(.2,1.8,.4,1); }
+.btn:active, .pill-btn:active, .chip:active { transform: scale(.9); }
+@media (max-width: 760px) { .combo { right: 8%; top: 36%; } .combo b { font-size: 32px; } }
