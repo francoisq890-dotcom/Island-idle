@@ -1,14 +1,18 @@
 # Les Îles d’Éther
 
-Un jeu incrémental (idle / clicker) **en 3D** dans le navigateur. Tu incarnes un petit explorateur sur une île flottante au coucher du soleil : tu récoltes un cristal d’éther à la pioche, tu construis des machines **posées physiquement sur l’île**, tu regardes les éclats rouler sur les tapis jusqu’au Nexus, tu relies de nouveaux îlots par des ponts… puis tu fais **descendre l’île** dans la mer de nuages pour en faire pousser une nouvelle, plus fertile.
+Un jeu incrémental (idle / clicker) **en 3D** dans le navigateur. Tu incarnes un petit explorateur sur une île flottante au coucher du soleil :
+- tu récoltes un cristal d’éther à la pioche ;
+- tu construis des machines **posées physiquement sur l’île** et tu regardes les éclats rouler sur les tapis jusqu’au Nexus ;
+- tu relies de nouveaux îlots par des ponts, tu tires et fusionnes des runes, tu brises des gardiens de cristal et tu élèves des familiers ;
+- puis tu fais **descendre l’île** dans la mer de nuages pour en faire pousser une nouvelle, avant d’élever un jour **tout l’archipel au-dessus des nuages**.
 
 **▶ Jouer :** https://francoisq890-dotcom.github.io/Island-idle/
-*(le lien fonctionne une fois GitHub Pages activé, voir « Déploiement » plus bas)*
 
 | | |
 |---|---|
-| ![En jeu : machines, convoyeurs, info-bulle](docs/jeu.png) | ![L’Atelier](docs/atelier.png) |
-| ![L’Autel des runes](docs/runes.png) | ![Version mobile](docs/mobile.png) |
+| ![En jeu, de jour](docs/apres-polish-ultra.png) | ![La nuit : étoiles, cristaux qui brillent](docs/nuit.png) |
+| ![Le Jardin d’étoiles (talents)](docs/jardin.png) | ![Le Creuset runique (fusion)](docs/creuset.png) |
+| ![Quai des dirigeables (expéditions)](docs/quai.png) | ![Succès à paliers, sur mobile](docs/succes-mobile.png) |
 
 ## Lancer en local
 
@@ -17,102 +21,90 @@ npm install
 npm run dev        # http://localhost:5173
 ```
 
-Autres commandes :
-
 | Commande | Rôle |
 |---|---|
-| `npm test` | tests unitaires (économie, sauvegarde, hors-ligne, équilibrage) |
-| `npm run simulate` | rapport d’équilibrage : un bot joue la première île (`-- --verbose` pour le détail) |
-| `npm run build` | build de production dans `dist/` (≈ 190 Ko gzip) |
-| `npm run preview` | sert le build de production |
+| `npm test` | 98 tests (≈ 1 min), dont l’équilibrage de 5 profils de joueur sur un cycle complet |
+| `npm run simulate` | rapport d’équilibrage : le bot joue jusqu’à l’Ascension (`-- --verbose` pour le détail par île) |
+| `npm run test:e2e` | déplacement clavier (AZERTY/QWERTY) et joystick, dans un vrai navigateur |
+| `npm run build` | build de production dans `dist/` |
 
 ## Commandes
 
 | Action | Clavier / souris | Tactile |
 |---|---|---|
-| Marcher | **ZQSD** (AZERTY) ou **WASD** (QWERTY) ou flèches, diagonales comprises | joystick : glisser sur la moitié gauche de l’écran |
-| Tourner la caméra | glisser avec la souris | glisser sur la moitié droite |
-| Zoom | molette | pincer |
-| Frapper le cristal | clic dessus, ou **E** à côté (maintenir = coups enchaînés) | toucher le cristal, ou bouton **Action** (maintenir) |
-| Construire / interagir | **E** près d’un chantier, d’un pont, d’un autel, du Phare (ou clic dessus) | bouton **Action** |
-| Sauter | **Espace** | bouton flèche |
-| Atelier (machines, améliorations) | **B** | bouton marteau |
-| Autel des runes | **R** (ou E devant un autel) | bouton rune |
-| Journal (succès, constellations) | **J** | bouton trophée |
-| Phare (prestige) | **P** | bouton Phare |
-| Son on/off | **M** | bouton haut-parleur |
-| Carnet de bord (réglages, sauvegarde, stats) | **Échap** | bouton carnet |
+| Marcher | **ZQSD** (AZERTY) ou **WASD** (QWERTY) ou flèches | joystick (moitié gauche de l’écran) |
+| Caméra | glisser la souris · molette | glisser à droite · pincer |
+| Frapper (cristal, gardien, faille) | clic dessus, ou **E** à côté (maintenir = coups enchaînés) | toucher, ou bouton **Action** |
+| Interagir (chantier, pont, autel, nid, quai, Creuset, marchand, Phare) | **E** ou clic | bouton **Action** |
+| Sauter (et éviter l’onde de choc des gardiens) | **Espace** | bouton flèche |
+| Atelier | **B** | marteau |
+| Runes | **R** | rune |
+| Nid d’éther (familiers) | **N** | œuf |
+| Jardin d’étoiles (talents) | **T** | étoile |
+| Journal (succès, statistiques, constellations) | **J** | trophée |
+| Phare (prestige, Ascension) | **P** | Phare / couronne |
+| Son · Carnet de bord (réglages, sauvegarde) | **M** · **Échap** | haut-parleur · carnet |
 
-Le clavier fonctionne en AZERTY comme en QWERTY, y compris dans les navigateurs qui renvoient des codes de touches dépendants de la disposition (voir DECISIONS.md § 1).
+## Nouveautés de l’itération 3
 
-## Nouveautés de l’itération 2
+Le plan complet est dans **DESIGN.md**, l’équilibrage dans **BALANCE.md**.
 
-- **Déplacement corrigé** et couvert par un test Playwright automatique : 41 cas (QWERTY, AZERTY, codes dépendants de la disposition, codes vides, flèches, diagonales, caméra tournée, joystick, sortie d’une machine construite sur le joueur).
-- **Vraie frappe de pioche** : armé au-dessus de l’épaule, anticipation, arc rapide vers le cristal, *hit-stop*, étincelles, rebond. L’explorateur se tourne et fait un pas vers sa cible. **7 pioches** au look de plus en plus spectaculaire (traînées, lumière, éclats en orbite), avec une scène de « nouvelle pioche ».
-- **Nouvelle interface « Carnet du Cartographe »** : vélin, laiton, encre, polices Fraunces et Alegreya Sans, icônes SVG dessinées pour le jeu, boutons-sceaux, panneaux qui se déplient, sons d’interface.
-- **Runes** :
-  - 4 autels (un par île), 28 runes en 7 raretés jusqu’à 1 sur 1 million, probabilités affichées et ajustées par la chance ;
-  - charge, cadence et tirage automatique ;
-  - célébration au ralenti pour les grandes raretés ;
-  - index de collection ;
-  - les runes légendaires et plus survivent au prestige.
-- **Événements** : pluie de météores et cristal doré. **Coups critiques**, **32 succès** à bonus permanents, **synergies** entre machines.
-- **Constellations** : objectif de long terme après le premier prestige, avec des avantages permanents pour chaque nouvelle île.
-- **Rééquilibrage complet** avec un bot qui utilise tous ces systèmes (voir plus bas).
-- Les sauvegardes de la première version sont **migrées automatiquement** (format v2).
+- **62 succès à paliers** (bronze, argent, or) en 6 catégories, dont 10 cachés. Chaque palier donne un bonus permanent. Une page dédiée avec filtres et la progression de chaque succès, et un **écran de statistiques** complet.
+- **Cycle jour/nuit** : toutes les 8 minutes, 2 minutes de nuit, avec étoiles, lune et aurores, des cristaux qui brillent, des grillons, et une chance de rune ×1,5.
+- **Runes étendues** :
+  - deux nouvelles familles : la **Lune**, dont l’autel ne s’éveille que la nuit, et le **Gardien**, butin des golems ;
+  - la **fusion** au Creuset runique : 5 doublons et des fragments donnent la rareté supérieure ;
+  - **8 sets** ;
+  - une **pitié** légère : épique garantie après 100 tirages, légendaire après 1 000 ;
+  - des **mythiques à effet unique** : un écho de chaque coup, des critiques en chaîne, une nuit deux fois plus longue.
+- **Gardiens de cristal** : un golem surgit, il faut le briser à la pioche en 35 s et **sauter** son onde de choc. Il lâche des fragments, des runes et parfois un œuf.
+- **Familiers d’éther** : quatre espèces et quatre raretés. Ils volent autour du cristal et le **frappent pour toi**. On les fait éclore au Nid d’éther et on les fait monter de niveau.
+- **Jardin d’étoiles** : trois branches de talents payées en graines (qui continuent de compter pour la production), avec un **achat automatique** des machines et des **voies exclusives** : Pioche, Automate ou Oracle.
+- **Expéditions** : un dirigeable emmène un familier de 10 min à 8 h, et il revient chargé de butin, même quand le jeu est fermé.
+- **Événements** : la **faille d’éther** (production ×3 pendant 45 s) et le **marchand ambulant**.
+- **Ascension** : seconde couche de prestige, avec des couronnes, **6 reliques** qui changent les règles et **5 défis** qui rapportent des bonus permanents.
+- **Équilibrage global** : 5 profils de joueur (optimal, moyen, idle, chanceux, « ne lit rien ») sont testés automatiquement sur un cycle complet. Les emballements trouvés ont été corrigés (BALANCE.md).
+- **Rendu et sensations** :
+  - préréglages Économie / Moyenne / Haute / Ultra / Automatique ;
+  - rayons de soleil et de lune, occlusion ambiante (Ultra), vent dans les arbres et l’herbe, cristal scintillant, mer de nuages qui respire ;
+  - écrasement et étirement aux sauts, petite célébration, compteurs qui défilent, gains qui volent jusqu’au HUD, compteur de série, zoom brusque sur les grands moments, vibrations sur mobile ;
+  - musique qui s’enrichit avec la production, sons jamais identiques.
+- Les sauvegardes précédentes sont **migrées automatiquement** (formats v3 et v4).
 
-## Ce que contient le jeu
+| Avant le polish | Après (Ultra) |
+|---|---|
+| ![Avant](docs/avant-polish.png) | ![Après](docs/apres-polish-ultra.png) |
 
-- **Monde 3D** généré en code : 4 îles flottantes, mer de nuages, lumière de coucher de soleil, ombres, bloom, étalonnage. Les arbres qui masquent le joueur s’effacent.
-- **5 machines** posées physiquement sur l’île, animées, avec paliers (×2 à 25/50/100…). Des **convoyeurs** amènent cubes d’éclats et de Lumen jusqu’au Nexus.
-- **3 ponts** construits en cinématique, **22 améliorations + 4 synergies**.
-- **Prestige** au Phare des étoiles : l’île descend dans les nuages et repousse avec une nouvelle saison. Les graines d’étoile donnent +5 % de production chacune ; le Phare demande davantage à chaque île.
-- **Hors-ligne** (8 h max) avec écran « Bon retour ! ». **Tutoriel** de 18 objectifs avec balise et flèche au bord de l’écran.
-- **Audio 100 % synthétisé** : effets, carillons des runes, fanfares, musique générative.
-- **Sauvegarde** automatique versionnée, export/import texte.
-- **Tests** : 46 tests Vitest (économie, runes, succès, sauvegarde et migration, hors-ligne, clavier, collisions, équilibrage) + test Playwright de déplacement, lancés en CI avant chaque déploiement.
+## Équilibrage mesuré (`npm run simulate`)
 
-## Équilibrage (`npm run simulate`)
-
-| Profil du bot | 1er prestige | Attente max. au début | Remarque |
+| Profil | 1er prestige | 2e île | Ascension |
 |---|---|---|---|
-| Moyen (2 coups/s pendant 10 min) | **36 min** | 40 s | sans runes : 59 min (runes ×1,6) |
-| Paresseux (1 coup/s pendant 3 min) | **40 min** | 46 s | |
-| Optimal (3 coups/s sans pause, sans marcher) | 26 min | 35 s | borne basse, un humain est plus lent |
-| 2e île (profil moyen) | **8 min** | | 54 graines au lieu de 32 |
+| Actif optimal (3 coups/s sans pause) | 27 min | 10 min | 2,4 h |
+| Moyen (2 coups/s, 10 min par île) | 37 min | 18 min | 5,5 h |
+| Surtout idle | 42 min | 22 min | 4,7 h |
+| Chanceux (tirages favorables forcés) | 26 min | 5 min | 3,7 h |
+| Ne lit rien (achats au hasard) | 1 h 10 min | 26 min | 5,6 h |
 
-## Déploiement (GitHub Pages)
+Le jeu ne laisse jamais plus d’environ 15 s sans rien à acheter (hors profil « au hasard »). Les détails, les corrections et les plafonds sont dans BALANCE.md.
 
-Le workflow `.github/workflows/deploy.yml` lance les tests unitaires, la simulation, le test de déplacement, construit le jeu et publie `dist/` sur GitHub Pages à chaque push sur `main`.
+## Limites connues
 
-## Tests
-
-```bash
-npm test            # Vitest : 46 tests
-npm run test:e2e    # Playwright : déplacement clavier (AZERTY/QWERTY) et joystick
-npm run simulate    # rapport d’équilibrage
-```
-
-## Limites connues / reste à faire
-
-- Les 60 fps n’ont pas pu être mesurés sur une vraie carte graphique ici (rendu logiciel en headless). Les compteurs sont raisonnables : ~150 appels de dessin toutes passes comprises sur une partie avancée. La résolution adaptative et le mode « Économie » compensent.
-- Le bug « seule Z fonctionne » n’a pas pu être reproduit à l’identique dans Chromium. Trois vraies causes ont été trouvées et corrigées (codes de touches dépendants de la disposition ou vides, joueur emprisonné par une machine, focus capturé par un curseur). Si le problème persiste chez toi, le nom et la version de ton navigateur m’aideraient.
-- Au-delà des emplacements d’un chantier (5 à 12), les nouvelles machines ne s’ajoutent plus visuellement : celles qui existent grandissent et changent de teinte aux paliers.
+- Les 60 fps n’ont pas pu être mesurés sur une vraie carte graphique ici (rendu logiciel en headless). Le mode « Automatique » baisse la résolution puis le préréglage si les images ralentissent.
+- Le bug « seule Z fonctionne » n’a pas pu être reproduit à l’identique dans Chromium. Trois vraies causes ont été corrigées (voir DECISIONS.md). Si le problème persiste chez toi, le nom et la version de ton navigateur m’aideraient.
+- Au-delà des emplacements d’un chantier, les nouvelles machines ne s’ajoutent plus visuellement : celles qui existent grandissent aux paliers.
 - Pas de remappage des touches ; textes en français uniquement.
-- Le bot d’équilibrage est quasi optimal : un joueur réel mettra un peu plus longtemps que les chiffres ci-dessus.
 
 ## Structure
 
 ```
-src/config/    économie, runes, succès, événements, constellations, palette, disposition du monde
-src/economy/   règles pures (économie, runes, succès, bonus, hors-ligne, objectifs, bot de simulation)
-src/save/      sauvegarde versionnée + migrations
-src/world/     rendu 3D : terrain, décor, machines, convoyeurs, ponts, autels, événements, joueur, pioches, caméra, particules
-src/ui/        HUD, panneaux (Atelier, Autel des runes, Journal, Carnet de bord), icônes, CSS
-src/audio/     synthèse sonore
-src/game.ts    orchestration
+src/config/    données : économie, runes, succès, jour/nuit, gardiens, familiers, talents, expéditions, Ascension, monde, palette
+src/economy/   règles pures + bot de simulation + campagne + cibles d’équilibrage
+src/save/      sauvegarde versionnée + migrations (v1 → v4)
+src/world/     rendu 3D
+src/ui/        HUD et panneaux (Carnet du Cartographe)
+src/audio/     synthèse sonore et musique adaptative
 tests/         Vitest
-scripts/       simulation, test de déplacement Playwright, captures d’écran
+scripts/       simulation, sauvegardes de test, e2e, captures
 ```
 
-Voir **DECISIONS.md** pour les choix de design et de technique (et la direction artistique de l’interface).
+Voir **DESIGN.md** (progression et systèmes), **BALANCE.md** (équilibrage) et **DECISIONS.md** (choix et raisons).

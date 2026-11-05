@@ -1,5 +1,7 @@
 # DESIGN — Les Îles d’Éther, itération 3
 
+> **Statut** : tout ce qui est décrit ici est implémenté et déployé. Les chiffres ont été ajustés par la passe d’équilibrage globale : voir BALANCE.md (seuil du Phare, plafonds des runes, Constellations ×1,5 et ×2, Ascension à 1 000 graines).
+
 Ce document décrit **où va le jeu** : la progression complète, les nouveaux systèmes et la façon dont ils s’emboîtent dans l’économie existante. Les choix ponctuels et leurs raisons vont dans `DECISIONS.md`, les chiffres mesurés dans `BALANCE.md`.
 
 ---
@@ -57,10 +59,10 @@ Temps indiqués pour un joueur moyen (profil « moyen » du bot). Les objectifs 
 | Prestige 2 | Talent « Contremaître » : **achat automatique** des machines | Automatisation : on joue au niveau des décisions, plus des clics. |
 | Prestige 3+ | Paliers plus profonds de l’arbre, constellations 4 à 7 | Chaque île va plus vite, le Phare demande ×8. |
 
-### Après le prestige — l’Ascension (≈ 3 à 6 h de jeu actif + idle)
+### Après le prestige — l’Ascension (≈ 2,5 à 5,5 h de jeu actif + idle)
 | Moment | Débloqué | Pourquoi on continue |
 |---|---|---|
-| 2 500 graines gagnées au total | **Ascension** au Phare : l’archipel monte au-dessus des nuages | Remise à zéro des graines, talents et constellations. Gain : des **Couronnes d’éther**. |
+| 1 000 graines gagnées dans le cycle | **Ascension** au Phare : l’archipel monte au-dessus des nuages | Remise à zéro des graines, talents et constellations. Gain : des **Couronnes d’éther**. |
 | Ascension 1 | **Défis** | Des îles à contrainte (« sans foreuses », « production ÷10 »…) qui donnent des **bonus permanents**. |
 | Ascension 1 | **Reliques** (payées en couronnes) | Des **mécaniques** : ponts déjà construits, Phare automatique, perchoir de familier supplémentaire, héritage de machines. |
 | Ascensions suivantes | Défis plus durs, reliques restantes, index des runes célestes | La chasse à long terme. |
@@ -74,7 +76,7 @@ Ressources : **éclats** (cyan), **Lumen** (or), **graines** (violet), et une no
 ### P0 — Succès v2 (obligatoire)
 - **62 succès** en 6 catégories (récolte, machines, runes, prestige, exploration, secrets), presque tous à **3 paliers** (bronze, argent, or), soit 163 paliers à débloquer.
 - **Récompense à chaque palier**, petite mais réelle : +1 à 3 % de production, de valeur de coup, de chance, de Lumen, de fragments… Les bonus passent par `bonusTotals()` et ses plafonds (`STAT_CAP`).
-- **8 succès cachés** (affichés « ??? » jusqu’au déblocage), basés sur des gestes du joueur : prestige la nuit, sauts en rafale, rester contempler, etc.
+- **10 succès cachés** (affichés « ??? » jusqu’au déblocage), dont 7 dans la catégorie Secrets, basés sur des gestes du joueur : prestige la nuit, sauts en rafale, rester à contempler la nuit, etc.
 - **Page dédiée** (le Journal, onglet *Succès*) : filtres par catégorie, barre de progression vers le palier suivant, médaille bronze/argent/or, total des récompenses.
 - *Économie* : consomme rien, produit des multiplicateurs permanents (conservés au prestige et à l’Ascension). Nouveaux compteurs dans `GameState.counters`.
 - *Sauvegarde* : v3. Les 32 succès v2 sont convertis vers les paliers équivalents.
@@ -132,8 +134,8 @@ Ressources : **éclats** (cyan), **Lumen** (or), **graines** (violet), et une no
 - **Marchand ambulant** (prestige 1+) : une petite montgolfière se pose 2 min. Il vend œufs, fragments et un tirage garanti rare+, contre du Lumen.
 
 ### P2 — Ascension, Défis et Reliques
-- **Ascension** : à 2 500 graines gagnées au total (pendant l’ascension en cours). Remise à zéro des graines, des talents, des constellations, des runes non mythiques et des niveaux d’autel. On garde les succès, les familiers, les mythiques et célestes, les couronnes et les reliques.
-- **Couronnes d’éther** = ⌊√(graines de l’ascension / 250)⌋. Chacune donne **+10 % de chance de rune**, et elles achètent des reliques.
+- **Ascension** : à 1 000 graines gagnées pendant le cycle en cours (mesuré dans BALANCE.md : 2,4 à 5,5 h selon le profil). Remise à zéro des graines, des talents, des constellations, des runes non mythiques et des niveaux d’autel. On garde les succès, les familiers, les mythiques et célestes, les couronnes et les reliques.
+- **Couronnes d’éther** = ⌊3 × √(graines du cycle / 1 000)⌋. Chacune donne **+10 % de production et +10 % de chance de rune**, et elles achètent des reliques.
 - **Reliques** (mécaniques) : *Mémoire des ponts* (ponts déjà construits), *Phare automatique* (descend tout seul quand le gain double tes graines), *Perchoir d’or* (+1 familier), *Héritage* (on démarre avec 10 % des machines de l’île précédente), *Carillon du marchand* (le marchand revient deux fois plus souvent).
 - **Défis** : une île à contrainte, terminée en éveillant un Phare à seuil réduit. Exemples : sans foreuses (récompense : foreuses ×3), production ÷10 (+25 % de production), autels scellés (+50 % de chance), nuit éternelle sans lumière (+100 % de fragments), coûts ×3 (−10 % de coûts).
 
@@ -155,7 +157,7 @@ Ressources : **éclats** (cyan), **Lumen** (or), **graines** (violet), et une no
 
 ## 5. Garde-fous d’équilibrage (détails dans BALANCE.md)
 
-- Tous les bonus passent par **un seul point** (`bonusTotals`) et ses plafonds : production des runes et succès en rendement décroissant au-delà de +300 %, coûts −60 %, critique 50 %, vitesse +150 %, hors-ligne +200 %, graines +100 %, chance ×4 hors graines.
+- Tous les bonus passent par **un seul point** (`bonusTotals`) et ses plafonds : plafonds propres aux runes qui grandissent avec les îles reliées (`RUNE_CAP`), plafonds durs (coûts −60 %, critique 50 %, vitesse +150 %, hors-ligne +200 %, graines +100 %) et plafonds doux au-delà desquels un bonus ne croît plus qu’en x^0,4 (`SOFT_CAP`).
 - Les familiers et les gardiens sont en **relatif** (valeur d’un coup, secondes de production).
 - Les fragments n’existent que par les gardiens, les expéditions et le marchand : la fusion ne peut pas tourner en boucle.
 - Le bot de simulation joue **tous** les systèmes, avec 5 profils (actif optimal, moyen, idle, chanceux, aléatoire), sur une campagne complète jusqu’à l’Ascension. Les cibles sont des tests automatiques.
