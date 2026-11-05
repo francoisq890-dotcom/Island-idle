@@ -65,7 +65,7 @@ Le clavier fonctionne en AZERTY comme en QWERTY, y compris dans les navigateurs 
 
 - **Monde 3D** généré en code : 4 îles flottantes, mer de nuages, lumière de coucher de soleil, ombres, bloom, étalonnage. Les arbres qui masquent le joueur s’effacent.
 - **5 machines** posées physiquement sur l’île, animées, avec paliers (×2 à 25/50/100…). Des **convoyeurs** amènent cubes d’éclats et de Lumen jusqu’au Nexus.
-- **3 ponts** construits en cinématique, **20 améliorations + 4 synergies**.
+- **3 ponts** construits en cinématique, **22 améliorations + 4 synergies**.
 - **Prestige** au Phare des étoiles : l’île descend dans les nuages et repousse avec une nouvelle saison. Les graines d’étoile donnent +5 % de production chacune ; le Phare demande davantage à chaque île.
 - **Hors-ligne** (8 h max) avec écran « Bon retour ! ». **Tutoriel** de 18 objectifs avec balise et flèche au bord de l’écran.
 - **Audio 100 % synthétisé** : effets, carillons des runes, fanfares, musique générative.

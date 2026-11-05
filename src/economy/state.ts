@@ -56,7 +56,7 @@ export interface GameState {
   achievements: Record<string, true>;
   /** Counters for achievements / events (lifetime). */
   counters: { crits: number; meteors: number; golden: number; eventsSeen: number };
-  /** Golden-island long-term goal: total seeds ever earned. */
+  /** Total star seeds ever earned (drives the Constellations long-term goal). */
   lifetimeSeeds: number;
 }
 
