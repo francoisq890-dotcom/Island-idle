@@ -13,6 +13,9 @@ import { defeatGuardian, guardiansUnlocked } from './guardians';
 import { isNight } from './daynight';
 import { buyEgg, eggCost, familiarsUnlocked, hatch, levelCost, levelUp } from './familiars';
 import { PETS } from '../config/familiars';
+import { MERCHANT, RIFT } from '../config/expeditions';
+import { buyOffer, laterEventsUnlocked, merchantOffers, openSurge } from './events2';
+import { claimExpedition, expeditionsUnlocked, freeSlots, isDone, startExpedition } from './expeditions';
 import { checkAchievements } from './achievements';
 import {
   addLumen,
@@ -231,6 +234,8 @@ export function simulateRun(opts: SimOptions = {}): SimResult {
   let fusions = 0;
   let pets = 0;
   let strikes = 0;
+  let nextRift = (RIFT.first[0] + RIFT.first[1]) / 2;
+  let nextMerchant = (MERCHANT.first[0] + MERCHANT.first[1]) / 2;
   const plantTalents = () => {
     // Fixed priorities per play style: the bot plants the first plantable talent of its list.
     const order = opts.talentOrder ?? (clickUntil > 1200 ? ACTIVE_TALENTS : IDLE_TALENTS);
@@ -310,6 +315,26 @@ export function simulateRun(opts: SimOptions = {}): SimResult {
           guardians++;
         }
       }
+    }
+
+    // After the first descent: rifts (an active player closes them), merchant, expeditions.
+    if (laterEventsUnlocked(state)) {
+      nextRift -= dt;
+      nextMerchant -= dt;
+      if (nextRift <= 0) {
+        nextRift = (RIFT.every[0] + RIFT.every[1]) / 2;
+        if (clicking && rng() < catchRate) openSurge(state);
+      }
+      if (nextMerchant <= 0) {
+        nextMerchant = (MERCHANT.every[0] + MERCHANT.every[1]) / 2;
+        for (const o of merchantOffers(state, rates)) if (o.id !== 'rune' && o.available && (o.cost.lumen ?? 0) * 3 < state.lumen) buyOffer(state, rates, o.id, rng);
+      }
+    }
+    if (!noPets && expeditionsUnlocked(state)) {
+      const now = t * 1000;
+      for (let i = state.expeditions.length - 1; i >= 0; i--) if (isDone(state.expeditions[i], now)) claimExpedition(state, i, now, rng);
+      const resting = state.pets.find((p) => !p.perched && !p.away);
+      if (resting && freeSlots(state) > 0) startExpedition(state, rates, resting.id, 'voyage', now);
     }
 
     // Eggs hatch as soon as they are laid.

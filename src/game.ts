@@ -47,6 +47,11 @@ import { FamiliarPanel } from './ui/familiars';
 import { buyEgg, familiarsUnlocked, hatch, levelUp, petPower, setPerched } from './economy/familiars';
 import { PET_RARITIES, SPECIES } from './config/familiars';
 import { TalentPanel } from './ui/talents';
+import { DockPanel, MerchantPanel } from './ui/expeditions';
+import { MerchantBalloon, Rift } from './world/dock';
+import { EXPEDITION, EXPEDITIONS, MERCHANT, RIFT } from './config/expeditions';
+import { claimExpedition, isDone, startExpedition } from './economy/expeditions';
+import { buyOffer, laterEventsUnlocked, openSurge, surgeLeft, type OfferId } from './economy/events2';
 import { autoBuyStep, canPlant, guardianBonusTime, pickPath, plant, respec, seedsFree, talentsUnlocked } from './economy/talents';
 import { TALENT_BY_ID, TALENTS } from './config/talents';
 import { GUARDIAN } from './config/guardians';
@@ -207,6 +212,26 @@ export class Game {
       () => this.state,
     );
     this.panels.register(this.talentPanel.el);
+    this.dockPanel = new DockPanel(
+      {
+        start: (petId, dur) => this.startTrip(petId, dur),
+        claim: (i) => this.claimTrip(i),
+        sound: (k) => this.audio.ui(k),
+      },
+      () => this.state,
+      () => this.rates,
+    );
+    this.panels.register(this.dockPanel.el);
+    this.merchantPanel = new MerchantPanel((id) => this.buyFromMerchant(id), () => this.state, () => this.rates);
+    this.panels.register(this.merchantPanel.el);
+    this.rift = new Rift(this.world.particles);
+    this.merchant = new MerchantBalloon();
+    this.world.scene.add(this.rift.group, this.merchant.group);
+    this.riftIt = { id: 'rift', kind: 'rift', anchor: new THREE.Vector3(), range: 3.4, sphere: new THREE.Sphere(new THREE.Vector3(), 1.6), active: false };
+    this.merchantIt = { id: 'merchant', kind: 'merchant', anchor: new THREE.Vector3(), range: 3.6, sphere: new THREE.Sphere(new THREE.Vector3(), 2), active: false };
+    this.world.interactables.push(this.riftIt, this.merchantIt);
+    // Ships at the dock reflect the expeditions on load.
+    for (let i = 0; i < 2; i++) this.world.dock.snapShip(i, this.shipState(i));
     this.world.familiars.onPeck = (pet, at) => {
       if (!this.started || this.busy) return;
       const near = this.world.player.position.distanceTo(at) < 26;
@@ -560,6 +585,16 @@ export class Game {
       case 'nest':
         this.togglePanel(this.petPanel.el, () => this.petPanel.refresh());
         break;
+      case 'dock':
+        this.togglePanel(this.dockPanel.el, () => this.dockPanel.refresh());
+        break;
+      case 'merchant':
+        this.togglePanel(this.merchantPanel.el, () => this.merchantPanel.refresh());
+        break;
+      case 'rift':
+        if (d <= it.range + (fromKey ? 0 : 6)) this.strikeRift();
+        else this.tooFar('Approche-toi de la faille');
+        break;
       case 'crucible':
         this.openRunes(this.lastFamily);
         this.runePanel.setTab('fuse');
@@ -638,6 +673,16 @@ export class Game {
   private phoenixCharges = 0;
   private petPanel!: FamiliarPanel;
   private talentPanel!: TalentPanel;
+  private dockPanel!: DockPanel;
+  private merchantPanel!: MerchantPanel;
+  private rift!: Rift;
+  private riftIt!: Interactable;
+  private merchant!: MerchantBalloon;
+  private merchantIt!: Interactable;
+  private nextRift = between(RIFT.first);
+  private nextMerchant = between(MERCHANT.first);
+  private announcedTrips = new Set<number>();
+  private surgeOn = false;
   private autoBuyTimer = 0;
   private guardian!: Guardian;
   private guardianIt!: Interactable;
@@ -922,6 +967,7 @@ export class Game {
 
   private updateEvents(dt: number): void {
     this.updateGuardian(dt);
+    this.updateLateEvents(dt);
     const p = this.world.player.position;
     this.meteors.update(dt, this.time, p, EVENTS.meteor.magnet);
     if (this.golden.update(dt, this.time)) {
@@ -939,6 +985,152 @@ export class Game {
       this.nextGolden = between(EVENTS.golden.every) * (hasPerk(this.state.lifetimeSeeds, 'goldenRush') ? 0.5 : 1);
       this.spawnGolden();
     }
+  }
+
+  // --- Expeditions, rifts, merchant ------------------------------------------------
+
+  private shipState(i: number): 'docked' | 'away' | 'ready' {
+    const e = this.state.expeditions[i];
+    return !e ? 'docked' : isDone(e) ? 'ready' : 'away';
+  }
+
+  private startTrip(petId: number, dur: string): boolean {
+    if (!startExpedition(this.state, this.rates, petId, dur)) {
+      this.audio.error();
+      return false;
+    }
+    this.markDirty();
+    const i = this.state.expeditions.length - 1;
+    this.world.dock.setShip(i, 'away');
+    this.audio.bridgeDone();
+    const d = EXPEDITIONS.find((x) => x.id === dur)!;
+    this.hud.toast('airship', `Le dirigeable largue les amarres`, `${d.name} : retour dans ${formatDuration(d.seconds)}`, 'violet');
+    this.save();
+    return true;
+  }
+
+  private claimTrip(i: number): boolean {
+    const e = this.state.expeditions[i];
+    const res = claimExpedition(this.state, i);
+    if (!res || !e) {
+      this.audio.error();
+      return false;
+    }
+    this.announcedTrips.delete(e.end);
+    this.markDirty();
+    // Remaining expeditions shift down: resync the ships.
+    for (let k = 0; k < 2; k++) this.world.dock.setShip(k, this.shipState(k));
+    this.audio.goldenBreak();
+    const L = res.loot;
+    const names = res.runes.map((r) => r.name).join(', ');
+    this.hud.toast('airship', 'Butin d’expédition !', `+${formatNumber(L.shards)} éclats · +${formatNumber(L.lumen)} Lumen · +${L.fragments} fragments${names ? ` · ${names}` : ''}${res.egg ? ' · un œuf !' : ''}`, 'gold');
+    const best = res.runes.reduce((m, r) => Math.max(m, RARITY_INDEX[r.rarity]), 0);
+    const bd = res.runes.find((r) => RARITY_INDEX[r.rarity] === best);
+    if (bd && RARITIES[best].celebrate >= 3) this.celebration.show(bd, this.state.runes[bd.id]);
+    this.afterProgress();
+    this.save();
+    return true;
+  }
+
+  private updateLateEvents(dt: number): void {
+    const s = this.state;
+    // Finished expeditions: ships come back, one announcement each.
+    s.expeditions.forEach((e, i) => {
+      if (isDone(e) && !this.announcedTrips.has(e.end)) {
+        this.announcedTrips.add(e.end);
+        this.world.dock.setShip(i, 'ready');
+        if (this.started) this.hud.toast('airship', 'Un dirigeable est de retour !', 'Récupère son butin au Quai des dirigeables.', 'gold');
+      }
+    });
+    // Surge ("Afflux") from a closed rift.
+    const surge = surgeLeft(s) > 0;
+    if (surge !== this.surgeOn) {
+      this.surgeOn = surge;
+      this.markDirty();
+      if (!surge && this.started) this.hud.toast('rift', 'L’Afflux se dissipe', 'La production revient à la normale.');
+    }
+    this.hud.setSurge(surge ? surgeLeft(s) : 0);
+    if (this.rift.update(dt, this.time, this.world.camera)) {
+      this.riftIt.active = false;
+      this.hud.toast('rift', 'La faille s’est refermée seule…', 'Frappe-la plus vite la prochaine fois.');
+    }
+    if (this.merchant.update(dt, this.time)) {
+      this.merchantIt.active = false;
+      if (this.panels.open === this.merchantPanel.el) this.panels.close();
+      this.hud.toast('balloon', 'Le marchand repart', 'Il reviendra.');
+    }
+    this.merchantPanel.timeLeft = this.merchant.timeLeft;
+    if (!this.started || this.busy || !laterEventsUnlocked(s)) return;
+    this.nextRift -= dt;
+    this.nextMerchant -= dt;
+    if (this.nextRift <= 0 && !this.rift.active && !this.guardian.visible) {
+      this.nextRift = between(RIFT.every);
+      const spot = this.freeSpots(1, 4, 9, 1)[0];
+      if (spot) {
+        this.rift.spawn(spot, RIFT.hits, RIFT.life);
+        this.riftIt.sphere.center.copy(spot).setY(spot.y + 1.6);
+        this.riftIt.anchor.copy(spot).setY(spot.y + 3.8);
+        this.riftIt.active = true;
+        this.audio.riftOpen();
+        s.counters.eventsSeen++;
+        this.hud.toast('rift', 'Une faille d’éther s’ouvre !', `Frappe-la ${RIFT.hits} fois pour la refermer : production ×${RIFT.surgeMult} pendant ${RIFT.surgeSeconds} s.`, 'violet');
+      }
+    }
+    if (this.nextMerchant <= 0 && !this.merchant.active) {
+      this.nextMerchant = between(MERCHANT.every);
+      const spot = this.freeSpots(1, 5, 10, 2)[0];
+      if (spot) {
+        this.merchant.land(spot, MERCHANT.stay);
+        this.merchantIt.sphere.center.copy(spot).setY(spot.y + 1);
+        this.merchantIt.anchor.copy(spot).setY(spot.y + 3.4);
+        this.merchantIt.active = true;
+        this.merchantPanel.newVisit();
+        this.audio.merchant();
+        s.counters.eventsSeen++;
+        this.hud.toast('balloon', 'Un marchand ambulant se pose !', `Œufs, fragments et runes contre du Lumen. Il repart dans ${formatDuration(MERCHANT.stay)}.`, 'gold');
+      }
+    }
+  }
+
+  private strikeRift(): void {
+    if (!this.rift.active || this.stunned > 0) return;
+    this.world.player.requestStrike(
+      this.rift.position,
+      () => {
+        if (!this.rift.active) return;
+        this.audio.riftHit();
+        this.world.rig.shake(0.2);
+        if (this.rift.hit()) {
+          openSurge(this.state);
+          this.riftIt.active = false;
+          this.markDirty();
+          this.surgeOn = true;
+          this.audio.riftClose();
+          this.slowMo(0.6, 0.35);
+          this.renderer.setFlashColor(0xc59bff);
+          this.tweens.add(0.8, (v) => (this.renderer.flash = 0.3 * (1 - v)), { ease: Ease.outCubic });
+          const at = this.rift.position;
+          this.hud.float(at.x, at.y + 3, at.z, `Afflux ! Production ×${RIFT.surgeMult}`, 'huge surge', 2);
+          this.hud.toast('rift', 'Faille refermée : Afflux !', `Production ×${RIFT.surgeMult} pendant ${RIFT.surgeSeconds} s`, 'violet');
+          this.afterProgress();
+        }
+      },
+      2.6,
+    );
+  }
+
+  private buyFromMerchant(id: OfferId): boolean {
+    const got = buyOffer(this.state, this.rates, id);
+    if (!got) {
+      this.audio.error();
+      return false;
+    }
+    this.audio.buy();
+    this.markDirty();
+    if (got !== true) this.hud.toast('rune', `Rune garantie : ${got.name}`, `${RARITIES[RARITY_INDEX[got.rarity]].name} · ${runeEffect(got, 1)} par copie`, 'violet');
+    else this.hud.toast('balloon', 'Marché conclu', id === 'egg' ? 'L’œuf t’attend au Nid d’éther.' : 'Les fragments sont dans ta besace.', 'gold');
+    this.afterProgress();
+    return true;
   }
 
   // --- Crystal guardians -------------------------------------------------------
@@ -1249,6 +1441,11 @@ export class Game {
     this.hud.show(true);
     this.audio.welcome();
     this.hud.toast('seed', `+${gain} Graine${gain > 1 ? 's' : ''} d’étoile`, `Une nouvelle île est née. Production +${Math.round(this.state.seeds * PRESTIGE.bonusPerSeed * 100)} % pour toujours.`, 'violet');
+    if (this.state.stats.prestiges === 1) {
+      window.setTimeout(() => this.hud.toast('seed', 'Le Jardin d’étoiles s’ouvre', 'Plante tes graines dans des talents (touche T).', 'violet'), 4500);
+      window.setTimeout(() => this.hud.toast('airship', 'Nouveau : le Quai des dirigeables', 'Au bord de l’Île Mère : envoie tes familiers en expédition. Failles d’éther et marchands visitent désormais l’archipel.', 'gold'), 9000);
+    }
+    for (let i = 0; i < 2; i++) this.world.dock.snapShip(i, this.shipState(i));
     this.save();
   }
 
@@ -1316,6 +1513,8 @@ export class Game {
       if (this.panels.open === this.runePanel.el) this.runePanel.refresh();
       if (this.panels.open === this.journal.el) this.journal.refresh();
       if (this.panels.open === this.petPanel.el) this.petPanel.refresh();
+      if (this.panels.open === this.dockPanel.el) this.dockPanel.refresh();
+      if (this.panels.open === this.merchantPanel.el) this.merchantPanel.refresh();
       this.hud.petsBtn.classList.toggle('hide', !familiarsUnlocked(this.state));
       this.hud.gardenBtn.classList.toggle('hide', !talentsUnlocked(this.state));
       this.hud.gardenBtn.classList.toggle('glow', seedsFree(this.state) > 0 && TALENTS.some((t) => canPlant(this.state, t)));
@@ -1386,6 +1585,7 @@ export class Game {
     let h = 3.2;
     if (this.golden.active) target = { kind: 'golden' } as unknown as ObjectiveTarget;
     if (this.guardian.active) target = { kind: 'guardian' } as unknown as ObjectiveTarget;
+    else if (this.rift.active) target = { kind: 'rift' } as unknown as ObjectiveTarget;
     switch (target.kind) {
       case 'crystal':
         pos = this.world.beaconTarget('crystal');
@@ -1420,6 +1620,10 @@ export class Game {
           pos = this.golden.position.clone();
           h = 3.6;
         }
+        if ((target as { kind: string }).kind === 'rift') {
+          pos = this.rift.position.clone();
+          h = 4.4;
+        }
         if ((target as { kind: string }).kind === 'guardian') {
           pos = this.guardian.position.clone();
           h = 4.2;
@@ -1440,6 +1644,9 @@ export class Game {
     if (it.kind === 'crystal' || it.kind === 'golden' || it.kind === 'guardian') return 'Frapper';
     if (it.kind === 'crucible') return 'Creuset';
     if (it.kind === 'nest') return 'Nid';
+    if (it.kind === 'dock') return 'Quai';
+    if (it.kind === 'merchant') return 'Marchand';
+    if (it.kind === 'rift') return 'Frapper';
     if (it.kind === 'altar') return 'Runes';
     if (it.kind === 'site' || it.kind === 'bridge') return 'Construire';
     return 'Phare';
@@ -1473,6 +1680,14 @@ export class Game {
         if (f.nightOnly && !isNight(s)) return `${f.altarName} <span class="cost">endormi · s’éveille dans ${formatDuration(secondsToNight(s))}</span>`;
         return `${this.keyCap()} ${f.altarName} <span class="cost">${costHtml(rollCostOf(s, it.family!), have)} / tirage</span>`;
       }
+      case 'dock': {
+        const ready = s.expeditions.filter((e) => isDone(e)).length;
+        return `${this.keyCap()} Quai des dirigeables <span class="cost">${ready ? `${ready} butin${ready > 1 ? 's' : ''} à récupérer` : `${s.expeditions.length}/${EXPEDITION.slots} en voyage`}</span>`;
+      }
+      case 'merchant':
+        return `${this.keyCap()} Marchand ambulant <span class="cost">repart dans ${Math.ceil(this.merchant.timeLeft)} s</span>`;
+      case 'rift':
+        return `${this.keyCap()} Refermer la faille <span class="cost">${this.rift.hits}/${this.rift.maxHits} · ${Math.ceil(this.rift.timeLeft)} s</span>`;
       case 'nest':
         return `${this.keyCap()} Nid d’éther <span class="cost">${s.eggs > 0 ? `${s.eggs} œuf${s.eggs > 1 ? 's' : ''} à faire éclore` : `${s.pets.length} familier${s.pets.length > 1 ? 's' : ''}`}</span>`;
       case 'crucible':
@@ -1530,6 +1745,12 @@ export class Game {
       }
       case 'golden':
         return `<h3>${ICONS.lumen} Cristal doré</h3><p>Frappe-le ${this.golden.maxHits} fois avant qu’il ne s’éteigne !</p><div class="kv"><span>Coups</span><b>${this.golden.hits} / ${this.golden.maxHits}</b></div><div class="kv"><span>Temps</span><b>${Math.ceil(this.golden.timeLeft)} s</b></div>`;
+      case 'dock':
+        return `<h3>${ICONS.airship} Quai des dirigeables</h3><p>Envoie un familier en expédition, de 10 minutes à 8 heures. Il revient avec du butin, même si le jeu est fermé.</p><div class="kv"><span>En voyage</span><b>${s.expeditions.length} / ${EXPEDITION.slots}</b></div><div class="foot">${act('Ouvrir le quai')}</div>`;
+      case 'merchant':
+        return `<h3>${ICONS.balloon} Marchand ambulant</h3><p>Œufs, fragments et runes garanties, contre du Lumen.</p><div class="kv"><span>Repart dans</span><b>${Math.ceil(this.merchant.timeLeft)} s</b></div><div class="foot">${act('Voir ses merveilles')}</div>`;
+      case 'rift':
+        return `<h3>${ICONS.rift} Faille d’éther</h3><p>Frappe-la ${this.rift.maxHits} fois pour la refermer : production ×${RIFT.surgeMult} pendant ${RIFT.surgeSeconds} s.</p><div class="kv"><span>Coups</span><b>${this.rift.hits} / ${this.rift.maxHits}</b></div><div class="kv"><span>Temps</span><b>${Math.ceil(this.rift.timeLeft)} s</b></div>`;
       case 'nest':
         return `<h3>${ICONS.egg} Nid d’éther</h3>
           <p>Fais éclore des œufs : tes familiers frappent le cristal pour toi, même quand tu ne joues pas.</p>

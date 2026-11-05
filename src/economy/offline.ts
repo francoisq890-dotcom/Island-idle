@@ -22,6 +22,8 @@ export function applyOffline(state: GameState, now = Date.now()): OfflineReport 
   const awaySeconds = Math.max(0, (now - state.lastSeen) / 1000);
   const cap = OFFLINE.maxSeconds + offlineExtraHours(state) * 3600;
   const creditedSeconds = Math.min(awaySeconds, cap);
+  // Temporary buffs never count while away.
+  state.surge.until = 0;
   const rates = computeRates(state);
   const eff = OFFLINE.efficiency * rates.offlineMult;
   const shards = Math.max(0, rates.shards) * creditedSeconds * eff;

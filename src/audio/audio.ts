@@ -448,6 +448,30 @@ export class Audio {
     [72, 76, 79, 84, 88].slice(0, 3 + rarity).forEach((n, i) => this.tone(this.midi(n), { type: 'triangle', attack: 0.005, decay: 0.5, gain: 0.05, when: 0.3 + i * 0.08, reverb: 0.8 }));
   }
 
+  // --- Rifts & merchant ---------------------------------------------------------
+
+  riftOpen(): void {
+    this.noise({ freq: 600, q: 2, decay: 1.6, gain: 0.18, type: 'bandpass', sweep: 3 });
+    [61, 66, 70].forEach((n, i) => this.tone(this.midi(n), { type: 'sawtooth', attack: 0.3, decay: 1.4, gain: 0.02, when: i * 0.1, reverb: 1.2, detune: 12 }));
+  }
+
+  riftHit(): void {
+    const v = 0.95 + Math.random() * 0.1;
+    this.tone(this.midi(78) * v, { type: 'triangle', attack: 0.002, decay: 0.35, gain: 0.06, glide: 0.7, reverb: 0.8 });
+    this.noise({ freq: 1800 * v, q: 3, decay: 0.15, gain: 0.12, type: 'bandpass' });
+  }
+
+  riftClose(): void {
+    this.noise({ freq: 400, q: 1, decay: 0.8, gain: 0.25, type: 'lowpass', sweep: 6 });
+    [74, 78, 81, 86, 90, 93].forEach((n, i) => this.tone(this.midi(n), { type: 'sine', attack: 0.01, decay: 1.4, gain: 0.05, when: 0.1 + i * 0.07, reverb: 1.3 }));
+  }
+
+  /** A little brass bell and a burner whoosh. */
+  merchant(): void {
+    this.noise({ freq: 300, q: 0.7, decay: 1.2, gain: 0.15, type: 'lowpass' });
+    [84, 88, 84, 91].forEach((n, i) => this.tone(this.midi(n), { type: 'sine', attack: 0.002, decay: 0.7, gain: 0.05, when: 0.4 + i * 0.16, reverb: 0.9 }));
+  }
+
   // --- Guardians --------------------------------------------------------------
 
   /** Ground rumble and a low crystalline groan. */

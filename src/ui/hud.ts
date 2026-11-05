@@ -116,7 +116,7 @@ export class Hud {
     const sv = this.resShards.querySelector('.val')!;
     const sr = this.resShards.querySelector('.rate')!;
     this.set('sv', sv, formatNumber(shards));
-    this.set('sr', sr, shardRate > 0 ? `<b>+${formatRate(shardRate)}</b> éclats / s` : 'Éclats');
+    this.set('sr', sr, shardRate > 0 ? `<b>+${formatRate(shardRate)}</b> éclats / s${this.surgeLeft > 0 ? ` · <b>Afflux ${Math.ceil(this.surgeLeft)} s</b>` : ''}` : 'Éclats');
     this.resLumen.classList.toggle('hide', !showLumen);
     this.set('lv', this.resLumen.querySelector('.val')!, formatNumber(lumen));
     this.set('lr', this.resLumen.querySelector('.rate')!, lumenRate > 0 ? `<b>+${formatRate(lumenRate)}</b> lumen / s` : 'Lumen');
@@ -127,6 +127,13 @@ export class Hud {
     if (this.last.lumen >= 0 && lumen > this.last.lumen + Math.max(1, lumenRate * 0.6)) this.bump(this.resLumen);
     this.last.shards = shards;
     this.last.lumen = lumen;
+  }
+
+  private surgeLeft = 0;
+  /** Rift "Afflux": seconds left (0 = none). Shown on the shards counter. */
+  setSurge(seconds: number): void {
+    this.surgeLeft = seconds;
+    this.resShards.classList.toggle('surge', seconds > 0);
   }
 
   setFragments(n: number, visible: boolean): void {

@@ -760,3 +760,18 @@ table.odds .ef { color: var(--ink-soft); font-size: 14px; }
 .tcost.done .ico { width: 22px; height: 22px; }
 @media (max-width: 900px) { .garden { grid-template-columns: 1fr; } }
 .panel.talents { width: min(1000px, calc(100vw - 24px)); }
+
+/* Quai des dirigeables & marchand ------------------------------------------------ */
+.pet-picks { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+.pet-pick { display: flex; flex-direction: column; align-items: center; width: 58px; padding: 4px 2px 3px; border-radius: 8px; background: var(--vellum-hi); border: 2px solid var(--rc); cursor: pointer; font: 700 11.5px var(--text); color: var(--ink-soft); transition: transform .12s; }
+.pet-pick .ico { width: 34px; height: 34px; }
+.pet-pick:hover { transform: translateY(-2px); }
+.pet-pick.on { background: var(--rc); color: #fff; box-shadow: 0 3px 0 rgba(0,0,0,.25); transform: translateY(-2px); }
+.trip-preview { margin: 6px 2px; padding: 8px 10px; border-radius: 6px; background: var(--vellum-row); font-size: 14px; color: var(--ink-soft); line-height: 1.6; }
+.trip-preview .warn { color: var(--bad); font-weight: 700; }
+.loot { display: inline-flex; align-items: center; gap: 2px; font-weight: 800; color: var(--ink); margin-right: 6px; white-space: nowrap; }
+.loot .ico { width: 16px; height: 16px; }
+.row.trip.done { background: rgba(255,190,59,.14); }
+.row.offer .medal { padding: 10px; }
+.float.surge { color: #f2e6ff; -webkit-text-stroke-color: #2c1752; text-shadow: 0 0 18px rgba(197,155,255,.95); }
+.res.shards.surge .rate b { color: var(--violet); }

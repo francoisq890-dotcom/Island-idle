@@ -177,7 +177,8 @@ export function computeRates(state: GameState): Rates {
 
   const bonus = bonusTotals(state);
   const perkMult = (hasPerk(state.lifetimeSeeds, 'prod2') ? 2 : 1) * (hasPerk(state.lifetimeSeeds, 'prod3') ? 3 : 1);
-  const pMult = prestigeMult(state.seeds) * (1 + bonus.prod) * perkMult;
+  const surge = state.surge.until > state.clock ? state.surge.mult : 1;
+  const pMult = prestigeMult(state.seeds) * (1 + bonus.prod) * perkMult * surge;
   const lumenMult = 1 + bonus.lumen;
   const perMachine = {} as Record<MachineId, MachineRate>;
   let shardsGross = 0;

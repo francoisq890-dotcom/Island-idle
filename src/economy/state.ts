@@ -79,6 +79,10 @@ export interface GameState {
   seedsPlanted: number;
   /** Contremaître toggle. */
   autoBuy: boolean;
+  /** Expeditions under way (real time). Since save v4. */
+  expeditions: Expedition[];
+  /** Temporary production buff (rift "Afflux"): multiplier until state.clock reaches `until`. */
+  surge: { mult: number; until: number };
   /** Game-time clock driving the day/night cycle (seconds). Since save v3. */
   clock: number;
   /** Every rune ever found (the index survives prestige). Since save v3. */
@@ -96,6 +100,16 @@ export interface Pet {
   perched: boolean;
   /** On an expedition. */
   away: boolean;
+}
+
+export interface Expedition {
+  petId: number;
+  duration: string;
+  /** Epoch ms. */
+  start: number;
+  end: number;
+  /** Loot fixed at departure. */
+  loot: { shards: number; lumen: number; fragments: number; eggChance: number; runes: number };
 }
 
 export interface Counters {
@@ -197,5 +211,7 @@ export function createInitialState(now = Date.now()): GameState {
     talents: {},
     seedsPlanted: 0,
     autoBuy: false,
+    expeditions: [],
+    surge: { mult: 1, until: 0 },
   };
 }

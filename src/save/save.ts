@@ -9,6 +9,7 @@ import { MACHINE_ORDER, UPGRADES, ZONE_ORDER } from '../config/economy';
 import { FAMILY_ORDER, RUNES, type FamilyId } from '../config/runes';
 import { ACHIEVEMENTS } from '../config/achievements';
 import { TALENTS } from '../config/talents';
+import { EXPEDITION, EXPEDITIONS } from '../config/expeditions';
 import { PET_RARITIES, PETS, SPECIES_ORDER, type PetRarity, type SpeciesId } from '../config/familiars';
 import { createInitialState, SAVE_VERSION, type GameState } from '../economy/state';
 
@@ -211,6 +212,21 @@ export function deserialize(text: string, now = Date.now()): GameState {
   }
   s.seedsPlanted = Math.min(s.seeds, Math.floor(num(raw.seedsPlanted, 0)));
   s.autoBuy = raw.autoBuy === true;
+  if (Array.isArray(raw.expeditions)) {
+    for (const x of raw.expeditions.slice(0, EXPEDITION.slots)) {
+      const o = obj(x);
+      const l = obj(o.loot);
+      const pet = s.pets.find((p) => p.id === o.petId);
+      if (!pet || !EXPEDITIONS.some((d) => d.id === o.duration)) continue;
+      pet.away = true;
+      pet.perched = false;
+      s.expeditions.push({ petId: pet.id, duration: o.duration as string, start: num(o.start, now), end: num(o.end, now), loot: { shards: num(l.shards, 0), lumen: num(l.lumen, 0), fragments: Math.floor(num(l.fragments, 0)), eggChance: Math.min(1, num(l.eggChance, 0)), runes: Math.min(30, Math.floor(num(l.runes, 0))) } });
+    }
+  }
+  // A familiar marked away without an expedition comes home.
+  for (const p of s.pets) if (p.away && !s.expeditions.some((e) => e.petId === p.id)) p.away = false;
+  const sg = obj(raw.surge);
+  s.surge = { mult: Math.min(10, num(sg.mult, 1, 1)), until: num(sg.until, 0) };
   const pity = obj(raw.pity);
   s.pity = { epic: Math.floor(num(pity.epic, 0)), legendary: Math.floor(num(pity.legendary, 0)) };
 
