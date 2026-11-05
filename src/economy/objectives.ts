@@ -6,6 +6,7 @@
 import { prestigeThreshold, type MachineId, type ZoneId } from '../config/economy';
 import type { Rates } from './economy';
 import type { GameState } from './state';
+import { islandIndex } from './ascension';
 
 /** Where the world beacon should point. */
 export type ObjectiveTarget =
@@ -171,7 +172,7 @@ export const OBJECTIVES: Objective[] = [
     text: 'Éveille le Phare : récolte assez d’éclats sur cette île',
     hint: 'Compte tout ce que tu as récolté depuis que l’île est née',
     target: { kind: 'lighthouse' },
-    progress: (s) => [Math.min(s.stats.runShards, prestigeThreshold(s.stats.prestiges)), prestigeThreshold(s.stats.prestiges)],
+    progress: (s) => [Math.min(s.stats.runShards, prestigeThreshold(islandIndex(s))), prestigeThreshold(islandIndex(s))],
   },
   {
     id: 'prestige',

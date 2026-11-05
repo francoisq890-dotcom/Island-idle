@@ -13,6 +13,7 @@ import {
   UPGRADES,
   ZONES,
   seedsForRun,
+  prestigeThreshold,
   type Cost,
   type MachineId,
   type UpgradeDef,
@@ -26,6 +27,9 @@ import { pickPath, streakCap, tlv } from './talents';
 import { perched, petStrikesPerSecond } from './familiars';
 import { PETS, SPECIES } from '../config/familiars';
 import { CONSTELLATIONS, hasPerk } from '../config/constellations';
+import { canAscend, challengesUnlocked, crownGain, crownProdMult, cycleSeeds, hasRelic, inChallenge, islandIndex } from './ascension';
+import type { ChallengeId } from '../config/ascension';
+import { RARITY_INDEX, RUNE_BY_ID } from '../config/runes';
 
 /** A critical strike multiplies the pickaxe gain by this. */
 export const CRIT_MULT = 5;
@@ -104,7 +108,7 @@ export function nextMachineCost(state: GameState, id: MachineId): Cost {
 
 /** Price of the machine number `owned`+1 for this state (rune cost reduction applied). */
 export function machineCostFor(state: GameState, id: MachineId, owned: number): Cost {
-  const k = 1 - bonusTotals(state).cost;
+  const k = (1 - bonusTotals(state).cost) * (inChallenge(state, 'dear') ? 3 : 1);
   return scaleCost(machineCost(id, owned), k);
 }
 
@@ -133,7 +137,13 @@ export function nextMilestone(count: number): number | null {
 }
 
 export function prestigeMult(seeds: number): number {
-  return 1 + seeds * PRESTIGE.bonusPerSeed;
+  return 1 + effectiveSeeds(seeds) * PRESTIGE.bonusPerSeed;
+}
+
+/** Seeds that count for the production bonus: linear up to softSeeds, then seeds^softExp (soft cap). */
+export function effectiveSeeds(seeds: number): number {
+  const k = PRESTIGE.softSeeds;
+  return seeds <= k ? seeds : k * Math.pow(seeds / k, PRESTIGE.softExp);
 }
 
 export function computeRates(state: GameState): Rates {
@@ -176,10 +186,12 @@ export function computeRates(state: GameState): Rates {
   }
 
   const bonus = bonusTotals(state);
-  const perkMult = (hasPerk(state.lifetimeSeeds, 'prod2') ? 2 : 1) * (hasPerk(state.lifetimeSeeds, 'prod3') ? 3 : 1);
+  const cs = cycleSeeds(state);
+  const perkMult = (hasPerk(cs, 'prod2') ? 2 : 1) * (hasPerk(cs, 'prod3') ? 3 : 1) * crownProdMult(state) * (inChallenge(state, 'tenth') ? 0.1 : 1);
   const surge = state.surge.until > state.clock ? state.surge.mult : 1;
   const pMult = prestigeMult(state.seeds) * (1 + bonus.prod) * perkMult * surge;
-  const lumenMult = 1 + bonus.lumen;
+  const lumenMult = (1 + bonus.lumen) * (inChallenge(state, 'moonless') ? 0.25 : 1);
+  if (state.ascension.done.noDrill) machineMult.drill *= 3;
   const perMachine = {} as Record<MachineId, MachineRate>;
   let shardsGross = 0;
   let lumen = 0;
@@ -289,6 +301,7 @@ export function harvest(state: GameState, rates = computeRates(state)): number {
 }
 
 export function isMachineAvailable(state: GameState, id: MachineId): boolean {
+  if (id === 'drill' && inChallenge(state, 'noDrill')) return false;
   return state.zones[MACHINES[id].zone];
 }
 
@@ -348,12 +361,12 @@ export function unlockZone(state: GameState, id: ZoneId): boolean {
 // ---------------------------------------------------------------------------
 
 export function prestigeGain(state: GameState): number {
-  const base = seedsForRun(state.stats.runShards, state.stats.prestiges);
+  const base = seedsForRun(state.stats.runShards, islandIndex(state));
   return base > 0 ? Math.floor(base * (1 + bonusTotals(state).seeds)) : 0;
 }
 
 export function canPrestige(state: GameState): boolean {
-  return state.zones.sky && prestigeGain(state) > 0;
+  return state.zones.sky && prestigeGain(state) > 0 && !state.ascension.challenge;
 }
 
 /**
@@ -363,17 +376,30 @@ export function canPrestige(state: GameState): boolean {
 export function doPrestige(state: GameState): number {
   if (!canPrestige(state)) return 0;
   const gain = prestigeGain(state);
-  const fresh = createInitialState();
   const ct = state.counters;
   if (ct.bestIsland === 0 || state.stats.runSeconds < ct.bestIsland) ct.bestIsland = Math.max(1, state.stats.runSeconds);
   ct.bestGain = Math.max(ct.bestGain, gain);
-  state.stats.runSeconds = 0;
   state.seeds += gain;
   state.lifetimeSeeds += gain;
-  // Runes: epic and rarer survive, the rest crumble (see DECISIONS.md).
-  state.runes = runesAfterPrestige(state.runes);
-  // Altar upgrades reset, the automatic roll (quality of life) is kept.
-  state.altar = { luck: 0, bulk: 0, speed: 0, auto: state.altar.auto };
+  state.stats.prestiges += 1;
+  resetIsland(state, 'prestige');
+  return gain;
+}
+
+/**
+ * A new island grows: everything of the run resets, then the permanent perks
+ * (constellations, talents, relics) give it a head start.
+ *  - 'prestige': runes below legendary crumble;
+ *  - 'challenge': same island count, nothing gained (entering a challenge);
+ *  - 'ascension': runes below mythic crumble too (handled by doAscend).
+ */
+export function resetIsland(state: GameState, why: 'prestige' | 'challenge' | 'ascension'): void {
+  const fresh = createInitialState();
+  const prevMachines = { ...state.machines };
+  state.stats.runSeconds = 0;
+  if (why !== 'challenge') state.runes = runesAfterPrestige(state.runes);
+  // Altar upgrades reset (unless the Autel fidèle relic), the automatic roll is kept.
+  if (!hasRelic(state, 'keepAltar') || why === 'ascension') state.altar = { luck: 0, bulk: 0, speed: 0, auto: state.altar.auto };
   state.familyRolls = { ...fresh.familyRolls };
   state.shards = 0;
   state.lumen = 0;
@@ -383,15 +409,15 @@ export function doPrestige(state: GameState): number {
   state.stats.runShards = 0;
   state.stats.runLumen = 0;
   state.stats.harvests = 0;
-  state.stats.prestiges += 1;
+  state.surge = { mult: 1, until: 0 };
   state.player = { ...fresh.player };
   state.islandSeed += 1;
-  // Constellation perks: the new island starts stronger.
-  const ls = state.lifetimeSeeds;
-  ct.constellations = CONSTELLATIONS.filter((x) => ls >= x.seeds).length;
+  // Constellation perks (seeds of the current Ascension cycle).
+  const ls = cycleSeeds(state);
+  state.counters.constellations = Math.max(state.counters.constellations, CONSTELLATIONS.filter((x) => ls >= x.seeds).length);
   if (hasPerk(ls, 'drills5')) state.machines.drill = 5;
   if (hasPerk(ls, 'bridgeForge')) state.zones.forge = true;
-  if (hasPerk(ls, 'altarLuck')) state.altar.luck = 5;
+  if (hasPerk(ls, 'altarLuck')) state.altar.luck = Math.max(state.altar.luck, 5);
   const f = tlv(state, 'founder');
   if (f > 0) {
     state.machines.drill += 10 * f;
@@ -401,7 +427,68 @@ export function doPrestige(state: GameState): number {
     state.upgrades.pick1 = true;
     state.upgrades.pick2 = true;
   }
+  // Relics.
+  if (hasRelic(state, 'bridges')) state.zones = { home: true, forge: true, geyser: true, sky: true };
+  if (hasRelic(state, 'heritage') && why === 'prestige') for (const id of MACHINE_ORDER) state.machines[id] = Math.max(state.machines[id], Math.floor(prevMachines[id] * 0.1));
+  if (inChallenge(state, 'noDrill')) state.machines.drill = 0;
+}
+
+/** Enter a challenge: the current island restarts (nothing gained) under a constraint. */
+export function startChallenge(state: GameState, id: ChallengeId): boolean {
+  if (!challengesUnlocked(state) || state.ascension.challenge || state.ascension.done[id]) return false;
+  state.ascension.challenge = id;
+  resetIsland(state, 'challenge');
+  return true;
+}
+
+export function abandonChallenge(state: GameState): boolean {
+  if (!state.ascension.challenge) return false;
+  state.ascension.challenge = null;
+  return true;
+}
+
+/** A challenge is won by waking the Lighthouse under its constraint. Returns the challenge completed. */
+export function checkChallenge(state: GameState): ChallengeId | null {
+  const c = state.ascension.challenge;
+  if (!c || state.stats.runShards < islandThreshold(state)) return null;
+  state.ascension.done[c] = true;
+  state.ascension.challenge = null;
+  state.counters.challenges = Object.keys(state.ascension.done).length;
+  return c;
+}
+
+/** Ascension: the archipelago rises above the clouds. Returns the crowns gained. */
+export function doAscend(state: GameState): number {
+  if (!canAscend(state)) return 0;
+  const gain = crownGain(state);
+  const a = state.ascension;
+  a.count += 1;
+  a.crowns += gain;
+  state.counters.ascensions = a.count;
+  // A new cycle: seeds, talents, constellations start over.
+  state.seeds = 0;
+  state.seedsPlanted = 0;
+  state.talents = {};
+  state.autoBuy = false;
+  a.base = state.lifetimeSeeds;
+  a.islandBase = state.stats.prestiges;
+  // Only mythic and celestial runes survive; altar upgrades and fragments are lost.
+  const kept: Record<string, number> = {};
+  for (const id in state.runes) {
+    const d = RUNE_BY_ID.get(id);
+    if (d && RARITY_INDEX[d.rarity] >= RARITY_INDEX.mythic) kept[id] = state.runes[id];
+  }
+  state.runes = kept;
+  state.fragments = 0;
+  state.pity = { epic: 0, legendary: 0 };
+  resetIsland(state, 'ascension');
+  state.altar = { luck: 0, bulk: 0, speed: 0, auto: state.altar.auto };
   return gain;
+}
+
+/** Lighthouse threshold of the current island (resets with each Ascension cycle). */
+export function islandThreshold(state: GameState): number {
+  return prestigeThreshold(islandIndex(state));
 }
 
 // ---------------------------------------------------------------------------

@@ -9,6 +9,7 @@ import { MACHINE_ORDER, UPGRADES, ZONE_ORDER } from '../config/economy';
 import { FAMILY_ORDER, RUNES, type FamilyId } from '../config/runes';
 import { ACHIEVEMENTS } from '../config/achievements';
 import { TALENTS } from '../config/talents';
+import { CHALLENGES, RELICS, type ChallengeId } from '../config/ascension';
 import { EXPEDITION, EXPEDITIONS } from '../config/expeditions';
 import { PET_RARITIES, PETS, SPECIES_ORDER, type PetRarity, type SpeciesId } from '../config/familiars';
 import { createInitialState, SAVE_VERSION, type GameState } from '../economy/state';
@@ -227,6 +228,19 @@ export function deserialize(text: string, now = Date.now()): GameState {
   for (const p of s.pets) if (p.away && !s.expeditions.some((e) => e.petId === p.id)) p.away = false;
   const sg = obj(raw.surge);
   s.surge = { mult: Math.min(10, num(sg.mult, 1, 1)), until: num(sg.until, 0) };
+  const asc = obj(raw.ascension);
+  const a = s.ascension;
+  a.count = Math.floor(num(asc.count, 0));
+  a.crowns = Math.floor(num(asc.crowns, 0));
+  a.crownsSpent = Math.min(a.crowns, Math.floor(num(asc.crownsSpent, 0)));
+  const rel = obj(asc.relics);
+  for (const r of RELICS) if (rel[r.id] === true) a.relics[r.id] = true;
+  a.base = Math.min(s.lifetimeSeeds, num(asc.base, 0));
+  a.islandBase = Math.min(s.stats.prestiges, Math.floor(num(asc.islandBase, 0)));
+  a.challenge = CHALLENGES.some((c) => c.id === asc.challenge) ? (asc.challenge as ChallengeId) : null;
+  const dn = obj(asc.done);
+  for (const c of CHALLENGES) if (dn[c.id] === true) a.done[c.id] = true;
+  a.autoPrestige = asc.autoPrestige === true && !!a.relics.autoPrestige;
   const pity = obj(raw.pity);
   s.pity = { epic: Math.floor(num(pity.epic, 0)), legendary: Math.floor(num(pity.legendary, 0)) };
 

@@ -669,6 +669,15 @@ export class World {
     );
   }
 
+  /** Ascension: the whole archipelago rises into the sky. */
+  async ascendUp(): Promise<void> {
+    const all: THREE.Object3D[] = [...this.islandGroup(), ...[...this.altars.values()].map((a) => a.group), this.decor.group, this.zoneAmbience, this.nexus.group, this.crystal.group, this.lighthouse.group, this.conveyors.group, this.crucible.group, this.familiars.group, this.dock.group, ...Object.values(this.sites).map((s) => s.group), ...[...this.bridges.values()].map((b) => b.group)];
+    const start = all.map((o) => o.position.y);
+    all.forEach((o, i) => this.homeY.set(o, start[i]));
+    this.rig.shake(0.5);
+    await new Promise<void>((resolve) => this.tweens.add(2.8, (v) => all.forEach((o, i) => (o.position.y = start[i] + v * v * 70)), { ease: Ease.inCubic, done: resolve }));
+  }
+
   async rise(): Promise<void> {
     // Everything that went down (plus bridges rebuilt in the meantime) comes back to its resting height.
     const all: THREE.Object3D[] = [...this.islandGroup(), ...[...this.altars.values()].map((a) => a.group), this.decor.group, this.zoneAmbience, this.nexus.group, this.crystal.group, this.lighthouse.group, this.crucible.group, this.familiars.group, this.dock.group, this.conveyors.group, ...Object.values(this.sites).map((s) => s.group), ...[...this.bridges.values()].map((b) => b.group)];

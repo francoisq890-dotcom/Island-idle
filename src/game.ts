@@ -4,7 +4,7 @@
  */
 import * as THREE from 'three';
 import { Audio } from './audio/audio';
-import { MACHINES, MILESTONES, PRESTIGE, ZONES, ZONE_ORDER, prestigeThreshold, type MachineId, type ZoneId } from './config/economy';
+import { MACHINES, MILESTONES, ZONES, ZONE_ORDER, type MachineId, type ZoneId } from './config/economy';
 import { PALETTE } from './config/palette';
 import { RANGES, SPAWN } from './config/world';
 import { Input } from './core/input';
@@ -22,6 +22,8 @@ import {
   nextMachineCost,
   nextMilestone,
   prestigeGain,
+  islandThreshold,
+  prestigeMult,
   tick,
   timeToAfford,
   unlockZone,
@@ -47,6 +49,9 @@ import { FamiliarPanel } from './ui/familiars';
 import { buyEgg, familiarsUnlocked, hatch, levelUp, petPower, setPerched } from './economy/familiars';
 import { PET_RARITIES, SPECIES } from './config/familiars';
 import { TalentPanel } from './ui/talents';
+import { AscensionPanel } from './ui/ascension';
+import { ascensionUnlocked, buyRelic, canAscend } from './economy/ascension';
+import { CHALLENGES, RELICS, type ChallengeId } from './config/ascension';
 import { DockPanel, MerchantPanel } from './ui/expeditions';
 import { MerchantBalloon, Rift } from './world/dock';
 import { EXPEDITION, EXPEDITIONS, MERCHANT, RIFT } from './config/expeditions';
@@ -56,11 +61,12 @@ import { autoBuyStep, canPlant, guardianBonusTime, pickPath, plant, respec, seed
 import { TALENT_BY_ID, TALENTS } from './config/talents';
 import { GUARDIAN } from './config/guardians';
 import { defeatGuardian, guardiansUnlocked } from './economy/guardians';
-import { addLumen, addShards } from './economy/economy';
+import { abandonChallenge, addLumen, addShards, checkChallenge, doAscend, startChallenge } from './economy/economy';
 import { checkAchievements, type AchievementUnlock } from './economy/achievements';
 import { TIER_NAMES } from './config/achievements';
 import { achievementDesc } from './ui/journal';
 import { Renderer } from './world/renderer';
+import { cycleSeeds } from './economy/ascension';
 import { isNight, nightAmount, nightLength, secondsToDawn, secondsToNight } from './economy/daynight';
 import { DAY_NIGHT } from './config/daynight';
 import { World, type Interactable } from './world/world';
@@ -139,6 +145,7 @@ export class Game {
         goTo: (kind, key) => this.goTo(kind, key),
         prestige: () => void this.prestige(),
         openGarden: () => this.openGarden(),
+        openAscension: () => this.openAscension(),
         exportSave: () => exportSave(this.snapshot()),
         importSave: (t) => this.importSave(t),
         reset: () => this.hardReset(),
@@ -224,6 +231,36 @@ export class Game {
     this.panels.register(this.dockPanel.el);
     this.merchantPanel = new MerchantPanel((id) => this.buyFromMerchant(id), () => this.state, () => this.rates);
     this.panels.register(this.merchantPanel.el);
+    this.ascPanel = new AscensionPanel(
+      {
+        ascend: () => void this.ascend(),
+        buyRelic: (id) => {
+          const ok = buyRelic(this.state, id);
+          if (ok) {
+            this.audio.pickReveal(5);
+            this.markDirty();
+            const rel = RELICS.find((x) => x.id === id)!;
+            this.hud.toast('crown', `Relique : ${rel.name}`, rel.desc, 'gold');
+            this.afterProgress();
+          } else this.audio.error();
+          return ok;
+        },
+        startChallenge: (id) => this.startChallengeAction(id),
+        abandonChallenge: () => {
+          if (abandonChallenge(this.state)) {
+            this.markDirty();
+            this.hud.toast('crown', 'Défi abandonné', 'L’île continue sans contrainte.');
+          }
+        },
+        toggleAutoPrestige: () => {
+          this.state.ascension.autoPrestige = !this.state.ascension.autoPrestige;
+          this.audio.ui('click');
+        },
+        sound: (k) => this.audio.ui(k),
+      },
+      () => this.state,
+    );
+    this.panels.register(this.ascPanel.el);
     this.rift = new Rift(this.world.particles);
     this.merchant = new MerchantBalloon();
     this.world.scene.add(this.rift.group, this.merchant.group);
@@ -674,6 +711,7 @@ export class Game {
   private petPanel!: FamiliarPanel;
   private talentPanel!: TalentPanel;
   private dockPanel!: DockPanel;
+  private ascPanel!: AscensionPanel;
   private merchantPanel!: MerchantPanel;
   private rift!: Rift;
   private riftIt!: Interactable;
@@ -856,6 +894,13 @@ export class Game {
 
   // --- Talents -------------------------------------------------------------------
 
+  private openAscension(toggle = false): void {
+    if (!ascensionUnlocked(this.state)) return;
+    if (toggle && this.panels.open === this.ascPanel.el) return this.panels.close();
+    this.ascPanel.open();
+    this.panels.show(this.ascPanel.el);
+  }
+
   private openGarden(toggle = false): void {
     if (!talentsUnlocked(this.state)) return;
     if (toggle && this.panels.open === this.talentPanel.el) return this.panels.close();
@@ -982,7 +1027,7 @@ export class Game {
       this.startMeteorShower();
     }
     if (this.nextGolden <= 0 && !this.golden.active && !this.guardian.visible && this.state.stats.harvests >= 10) {
-      this.nextGolden = between(EVENTS.golden.every) * (hasPerk(this.state.lifetimeSeeds, 'goldenRush') ? 0.5 : 1);
+      this.nextGolden = between(EVENTS.golden.every) * (hasPerk(cycleSeeds(this.state), 'goldenRush') ? 0.5 : 1);
       this.spawnGolden();
     }
   }
@@ -1402,6 +1447,7 @@ export class Game {
 
   private async prestige(): Promise<void> {
     if (!canPrestige(this.state) || this.busy) return;
+    if (isNight(this.state)) this.state.flags.sec_nightDescent = true;
     this.busy = true;
     this.panels.close();
     this.hud.show(false);
@@ -1440,12 +1486,73 @@ export class Game {
     this.busy = false;
     this.hud.show(true);
     this.audio.welcome();
-    this.hud.toast('seed', `+${gain} Graine${gain > 1 ? 's' : ''} d’étoile`, `Une nouvelle île est née. Production +${Math.round(this.state.seeds * PRESTIGE.bonusPerSeed * 100)} % pour toujours.`, 'violet');
+    this.hud.toast('seed', `+${gain} Graine${gain > 1 ? 's' : ''} d’étoile`, `Une nouvelle île est née. Production +${Math.round((prestigeMult(this.state.seeds) - 1) * 100)} % pour toujours.`, 'violet');
     if (this.state.stats.prestiges === 1) {
       window.setTimeout(() => this.hud.toast('seed', 'Le Jardin d’étoiles s’ouvre', 'Plante tes graines dans des talents (touche T).', 'violet'), 4500);
       window.setTimeout(() => this.hud.toast('airship', 'Nouveau : le Quai des dirigeables', 'Au bord de l’Île Mère : envoie tes familiers en expédition. Failles d’éther et marchands visitent désormais l’archipel.', 'gold'), 9000);
     }
     for (let i = 0; i < 2; i++) this.world.dock.snapShip(i, this.shipState(i));
+    this.save();
+  }
+
+  /** Ascension: the archipelago rises above the clouds, then a new cycle begins. */
+  private async ascend(): Promise<void> {
+    if (!canAscend(this.state) || this.busy) return;
+    this.busy = true;
+    this.panels.close();
+    this.hud.show(false);
+    const rig = this.world.rig;
+    rig.cinematic = { pos: new THREE.Vector3(52, 22, 34), look: new THREE.Vector3(0, 6, -14), weight: 0 };
+    const c = rig.cinematic;
+    await new Promise<void>((r) => this.tweens.add(1.6, (v) => (c.weight = v), { ease: Ease.inOutCubic, done: r }));
+    this.audio.ascension();
+    this.renderer.setFlashColor(PALETTE.lumen);
+    this.world.particles.sparks(this.world.lighthouse.topPosition, { count: 160, color: PALETTE.lumen, speed: 14, life: 2.2, size: 0.2, up: 6, gravity: 1 });
+    this.world.player.root.visible = false;
+    const up = this.world.ascendUp();
+    this.tweens.add(2.8, (v) => (this.renderer.flash = Math.pow(v, 2.5) * 0.95), { ease: Ease.linear });
+    await up;
+    const gain = doAscend(this.state);
+    this.markDirty();
+    this.world.regrow(this.state.islandSeed);
+    this.world.resetForNewIsland(this.state);
+    this.world.player.teleport(SPAWN.x, SPAWN.z, SPAWN.yaw, this.world.ground);
+    this.world.player.setPickTier(pickTierOf(this.state));
+    rig.yaw = SPAWN.yaw;
+    rig.pitch = 0.5;
+    const rise = this.world.rise();
+    this.tweens.add(2, (v) => (this.renderer.flash = 0.95 * (1 - v)), { ease: Ease.outCubic });
+    await rise;
+    this.world.player.root.visible = true;
+    rig.target.copy(this.world.player.position).add(new THREE.Vector3(0, 1.3, 0));
+    await new Promise<void>((r) => this.tweens.add(1.6, (v) => (c.weight = 1 - v), { ease: Ease.inOutCubic, done: r }));
+    rig.cinematic = null;
+    this.busy = false;
+    this.hud.show(true);
+    this.audio.welcome();
+    this.hud.toast('crown', `Ascension ! +${gain} couronne${gain > 1 ? 's' : ''} d’éther`, 'Reliques et défis s’ouvrent au Phare. Un nouveau cycle commence, plus fort.', 'gold');
+    for (let i = 0; i < 2; i++) this.world.dock.snapShip(i, this.shipState(i));
+    this.afterProgress();
+    this.save();
+  }
+
+  /** Enter a challenge: quick flash, the island restarts under its constraint. */
+  private startChallengeAction(id: ChallengeId): void {
+    if (this.busy || !startChallenge(this.state, id)) {
+      this.audio.error();
+      return;
+    }
+    this.panels.close();
+    this.markDirty();
+    this.renderer.setFlashColor(PALETTE.seed);
+    this.tweens.add(1.2, (v) => (this.renderer.flash = 0.7 * (1 - v)), { ease: Ease.outCubic });
+    this.world.regrow(this.state.islandSeed);
+    this.world.resetForNewIsland(this.state);
+    this.world.player.teleport(SPAWN.x, SPAWN.z, SPAWN.yaw, this.world.ground);
+    this.world.player.setPickTier(pickTierOf(this.state));
+    this.audio.prestige();
+    const c = CHALLENGES.find((x) => x.id === id)!;
+    this.hud.toast('crown', `Défi : ${c.name}`, `${c.rule} Éveille le Phare pour : ${c.reward}.`, 'violet');
     this.save();
   }
 
@@ -1480,6 +1587,12 @@ export class Game {
   /** The goal shown at the top once the scripted tutorial is over. */
   private dynamicGoal(): { text: string; hint: string; cur: number; goal: number; label: string; target: ObjectiveTarget } | null {
     const s = this.state;
+    const ch = s.ascension.challenge;
+    if (ch) {
+      const c = CHALLENGES.find((x) => x.id === ch)!;
+      const g = islandThreshold(s);
+      return { text: `Défi « ${c.name} » : éveille le Phare`, hint: c.rule, cur: s.stats.runShards, goal: g, label: `${formatNumber(s.stats.runShards)} / ${formatNumber(g)}`, target: { kind: 'lighthouse' } };
+    }
     const next = ZONE_ORDER.find((z) => !s.zones[z]);
     if (next) {
       const z = ZONES[next];
@@ -1489,7 +1602,7 @@ export class Game {
       return { text: `Construis le ${z.bridgeName}`, hint: z.blurb, cur: Math.min(1, prog), goal: 1, label: `${costHtml(c)}${isFinite(t) && t > 0 ? ` · dans ${formatDuration(t)}` : ''}`, target: { kind: 'bridge', zone: next } };
     }
     if (!canPrestige(s)) {
-      return { text: `Éveille le Phare : ${formatNumber(prestigeThreshold(s.stats.prestiges))} éclats sur cette île`, hint: 'Continue d’agrandir ta production', cur: s.stats.runShards, goal: prestigeThreshold(s.stats.prestiges), label: `${formatNumber(s.stats.runShards)} / ${formatNumber(prestigeThreshold(s.stats.prestiges))}`, target: { kind: 'lighthouse' } };
+      return { text: `Éveille le Phare : ${formatNumber(islandThreshold(s))} éclats sur cette île`, hint: 'Continue d’agrandir ta production', cur: s.stats.runShards, goal: islandThreshold(s), label: `${formatNumber(s.stats.runShards)} / ${formatNumber(islandThreshold(s))}`, target: { kind: 'lighthouse' } };
     }
     return { text: 'Le Phare est éveillé !', hint: `Fais descendre l’île pour gagner ${prestigeGain(s)} graines d’étoile (ou continue pour en gagner plus)`, cur: 1, goal: 1, label: '', target: { kind: 'lighthouse' } };
   }
@@ -1501,7 +1614,7 @@ export class Game {
   private updateUi(dt: number): void {
     const s = this.state;
     const r = this.rates;
-    this.hud.setResources(s.shards, r.shards, s.lumen, r.lumen, s.seeds, s.zones.forge || s.lumen > 0, s.seeds * PRESTIGE.bonusPerSeed * 100);
+    this.hud.setResources(s.shards, r.shards, s.lumen, r.lumen, s.seeds, s.zones.forge || s.lumen > 0, (prestigeMult(s.seeds) - 1) * 100);
     this.hud.setFragments(s.fragments, s.fragments > 0 || s.counters.guardians > 0);
 
     this.uiTimer += dt;
@@ -1514,6 +1627,20 @@ export class Game {
       if (this.panels.open === this.journal.el) this.journal.refresh();
       if (this.panels.open === this.petPanel.el) this.petPanel.refresh();
       if (this.panels.open === this.dockPanel.el) this.dockPanel.refresh();
+      if (this.panels.open === this.ascPanel.el) this.ascPanel.refresh();
+      this.hud.ascBtn.classList.toggle('hide', !ascensionUnlocked(s));
+      this.hud.ascBtn.classList.toggle('glow', canAscend(s));
+      const won = checkChallenge(s);
+      if (won) {
+        const c = CHALLENGES.find((x) => x.id === won)!;
+        this.markDirty();
+        this.audio.runeFanfare(5);
+        this.renderer.setFlashColor(PALETTE.lumen);
+        this.tweens.add(1.2, (v) => (this.renderer.flash = 0.4 * (1 - v)), { ease: Ease.outCubic });
+        this.hud.toast('trophy', `Défi réussi : ${c.name} !`, `${c.reward}. L’île continue sans contrainte.`, 'gold');
+        this.afterProgress();
+      }
+      if (s.ascension.autoPrestige && s.ascension.relics.autoPrestige && canPrestige(s) && prestigeGain(s) >= Math.max(1, s.seeds) && !this.busy && !this.panels.isOpen()) void this.prestige();
       if (this.panels.open === this.merchantPanel.el) this.merchantPanel.refresh();
       this.hud.petsBtn.classList.toggle('hide', !familiarsUnlocked(this.state));
       this.hud.gardenBtn.classList.toggle('hide', !talentsUnlocked(this.state));
@@ -1525,7 +1652,7 @@ export class Game {
       this.afterProgress();
       const ready = canPrestige(s);
       this.world.lighthouse.setAwake(ready);
-      this.world.lighthouse.setStars(CONSTELLATIONS.filter((c) => s.lifetimeSeeds >= c.seeds).length);
+      this.world.lighthouse.setStars(CONSTELLATIONS.filter((c) => cycleSeeds(s) >= c.seeds).length);
       this.hud.setPrestige(s.zones.sky, ready);
     }
 
@@ -1775,8 +1902,8 @@ export class Game {
       case 'lighthouse': {
         const ready = canPrestige(s);
         return `<h3>${ICONS.lighthouse} Phare des étoiles</h3>
-          <p>${ready ? `Il est éveillé ! Il peut faire descendre l’île contre <b>${prestigeGain(s)} graines d’étoile</b>.` : `Il dort. Récolte ${formatNumber(prestigeThreshold(s.stats.prestiges))} éclats sur cette île pour l’éveiller.`}</p>
-          ${ready ? '' : `<div class="ms"><i style="width:${Math.min(100, (s.stats.runShards / prestigeThreshold(s.stats.prestiges)) * 100)}%"></i></div>`}
+          <p>${ready ? `Il est éveillé ! Il peut faire descendre l’île contre <b>${prestigeGain(s)} graines d’étoile</b>.` : `Il dort. Récolte ${formatNumber(islandThreshold(s))} éclats sur cette île pour l’éveiller.`}</p>
+          ${ready ? '' : `<div class="ms"><i style="width:${Math.min(100, (s.stats.runShards / islandThreshold(s)) * 100)}%"></i></div>`}
           <div class="foot">${act('Parler au Phare')}</div>`;
       }
     }
@@ -1799,6 +1926,7 @@ export class Game {
     this.hud.journalBtn.addEventListener('click', () => this.togglePanel(this.journal.el, () => this.journal.refresh()));
     this.hud.runesBtn.addEventListener('click', () => this.openRunes(this.lastFamily));
     this.hud.gardenBtn.addEventListener('click', () => this.openGarden(true));
+    this.hud.ascBtn.addEventListener('click', () => this.openAscension(true));
     this.hud.petsBtn.addEventListener('click', () => this.togglePanel(this.petPanel.el, () => this.petPanel.refresh()));
     this.hud.prestigeBtn.addEventListener('click', () => {
       this.audio.click();

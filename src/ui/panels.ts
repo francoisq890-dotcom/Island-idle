@@ -3,7 +3,7 @@
  * offline report and prestige. Each line of a ledger is one decision: what it
  * is, what it yields, what it costs.
  */
-import { MACHINES, MACHINE_ORDER, PRESTIGE, prestigeThreshold, UPGRADES, ZONES, ZONE_ORDER, type Cost, type MachineId, type UpgradeDef, type ZoneId } from '../config/economy';
+import { MACHINES, MACHINE_ORDER, PRESTIGE, UPGRADES, ZONES, ZONE_ORDER, type Cost, type MachineId, type UpgradeDef, type ZoneId } from '../config/economy';
 import {
   affordProgress,
   canAfford,
@@ -12,6 +12,8 @@ import {
   milestoneMult,
   nextMilestone,
   prestigeGain,
+  islandThreshold,
+  prestigeMult,
   timeToAfford,
   visibleUpgrades,
   type Rates,
@@ -20,6 +22,7 @@ import { formatDuration, formatNumber, formatRate } from '../economy/format';
 import type { OfflineReport } from '../economy/offline';
 import type { GameState } from '../economy/state';
 import { costHtml, el } from './hud';
+import { ascensionUnlocked } from '../economy/ascension';
 import { ICONS, type IconName } from './icons';
 
 export interface PanelActions {
@@ -29,6 +32,7 @@ export interface PanelActions {
   goTo(kind: 'site' | 'bridge', key: string): void;
   prestige(): void;
   openGarden(): void;
+  openAscension(): void;
   exportSave(): string;
   importSave(text: string): string | null;
   reset(): void;
@@ -511,8 +515,8 @@ export class Panels {
     const s = this.getState();
     const gain = prestigeGain(s);
     const ready = s.zones.sky && gain > 0;
-    const curBonus = Math.round(s.seeds * PRESTIGE.bonusPerSeed * 100);
-    const newBonus = Math.round((s.seeds + gain) * PRESTIGE.bonusPerSeed * 100);
+    const curBonus = Math.round((prestigeMult(s.seeds) - 1) * 100);
+    const newBonus = Math.round((prestigeMult(s.seeds + gain) - 1) * 100);
     this.modalBody(
       this.prestigeModal,
       `<p>Le Phare peut faire <b>descendre ton île</b> dans la mer de nuages. Une île nouvelle, plus fertile, poussera à sa place.</p>
@@ -520,17 +524,18 @@ export class Panels {
          ready
            ? `<div class="big-gain"><div class="violet">${ICONS.seed}+${gain}</div></div>
               <p class="seed-preview">Graine${gain > 1 ? 's' : ''} d’étoile · production <b>+${curBonus} %</b> → <b>+${newBonus} %</b></p>`
-           : `<p class="seed-preview">Le Phare dort encore. Récolte <b>${formatNumber(prestigeThreshold(s.stats.prestiges))}</b> éclats sur cette île pour l’éveiller<br>(actuellement ${formatNumber(s.stats.runShards)}).</p>`
+           : `<p class="seed-preview">Le Phare dort encore. Récolte <b>${formatNumber(islandThreshold(s))}</b> éclats sur cette île pour l’éveiller<br>(actuellement ${formatNumber(s.stats.runShards)}).</p>`
        }
        <div class="compare">
          <div class="lose"><h4>Tu perds</h4>Éclats et Lumen<br>Machines et améliorations<br>Ponts<br>Runes communes à épiques</div>
          <div class="keep"><h4>Tu gardes</h4>Graines d’étoile (+${Math.round(PRESTIGE.bonusPerSeed * 100)} % chacune)<br>Talents, familiers, fragments<br>Runes légendaires et plus<br>Succès et statistiques${extraKeep}</div>
        </div>
        <p class="note">Plus tu récoltes avant de descendre, plus tu gagnes de graines.</p>
-       <div class="row-btns">${s.seeds > 0 ? '<button class="pill-btn" data-act="garden">Jardin d’étoiles</button>' : ''}<button class="pill-btn" data-act="no">Pas encore</button><button class="pill-btn violet" data-act="yes" ${ready ? '' : 'disabled'}>Faire descendre l’île</button></div>`,
+       <div class="row-btns">${s.seeds > 0 ? '<button class="pill-btn" data-act="garden">Jardin d’étoiles</button>' : ''}${ascensionUnlocked(s) ? '<button class="pill-btn gold-btn" data-act="asc">Ascension</button>' : ''}<button class="pill-btn" data-act="no">Pas encore</button><button class="pill-btn violet" data-act="yes" ${ready ? '' : 'disabled'}>Faire descendre l’île</button></div>`,
     );
     this.prestigeModal.querySelector('[data-act="no"]')!.addEventListener('click', () => this.close());
     this.prestigeModal.querySelector('[data-act="garden"]')?.addEventListener('click', () => this.actions.openGarden());
+    this.prestigeModal.querySelector('[data-act="asc"]')?.addEventListener('click', () => this.actions.openAscension());
     this.prestigeModal.querySelector('[data-act="yes"]')!.addEventListener('click', () => {
       this.close();
       this.actions.prestige();

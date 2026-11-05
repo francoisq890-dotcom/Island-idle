@@ -63,6 +63,19 @@ export const STAT_CAP: Partial<Record<RuneStat, number>> = {
   seeds: 1, // at most +100 % star seeds
 };
 
+/**
+ * Soft caps: beyond `k`, a bonus only grows logarithmically (k × (1 + ln(x / k))).
+ * Every multiplier of the game meets here, so the systems can never feed each other without limit.
+ */
+export const SOFT_CAP: Partial<Record<RuneStat, number>> = {
+  prod: 4, // +400 % before slowing down
+  luck: 3,
+  click: 4,
+  lumen: 4,
+  frag: 2,
+  pet: 2,
+};
+
 /** Total bonus of `count` copies = perCopy × count^STACK_EXP (duplicates always help, with diminishing returns). */
 export const STACK_EXP = 0.6;
 
@@ -236,6 +249,7 @@ export const ROLL = {
   minCooldown: 0.12,
   /** Luck per altar "Chance" level. */
   luckPerLevel: 0.2,
-  /** Luck bonus per star seed. */
-  luckPerSeed: 0.02,
+  /** Luck from star seeds: ×(1 + seedLuck × log2(1 + seeds / seedLuckScale)). */
+  seedLuck: 0.5,
+  seedLuckScale: 25,
 };

@@ -510,6 +510,13 @@ export class Audio {
     this.noise({ freq: 160, q: 0.6, decay: 1.4, gain: 0.25, type: 'lowpass', sweep: 0.3 });
   }
 
+  /** Ascension: a long rising choir of fifths and a shimmering bell cascade. */
+  ascension(): void {
+    this.noise({ freq: 150, q: 0.5, decay: 4, gain: 0.25, type: 'lowpass', sweep: 12 });
+    [0, 7, 12, 19, 24, 31, 36].forEach((n, i) => this.tone(this.midi(50 + n), { type: 'sine', attack: 0.4, decay: 3.5, gain: 0.06, when: i * 0.3, reverb: 1.4 }));
+    [86, 88, 91, 93, 95, 98, 100].forEach((n, i) => this.tone(this.midi(n), { type: 'triangle', attack: 0.005, decay: 1.6, gain: 0.03, when: 1.8 + i * 0.09, reverb: 1.5 }));
+  }
+
   /** Night falls: a low, slow chord and a high shimmer. */
   nightFall(): void {
     [50, 57, 62, 65, 69].forEach((n, i) => this.tone(this.midi(n), { type: 'sine', attack: 0.8, decay: 4, gain: 0.04, when: i * 0.25, reverb: 1.2 }));

@@ -83,6 +83,10 @@ export interface SimOptions {
   noRunes?: boolean;
   /** Disable familiars. */
   noPets?: boolean;
+  /** Keep playing after the prestige becomes available (until maxSeconds). */
+  noStop?: boolean;
+  /** With noStop: stop after playing this share longer than the time to wake the Lighthouse. */
+  stopAfterReady?: number;
   /** Talent planting priorities (default depends on the profile). */
   talentOrder?: string[];
   /** Share of event rewards the player actually grabs. */
@@ -419,6 +423,10 @@ export function simulateRun(opts: SimOptions = {}): SimResult {
     if (prestigeReadyAt === null && canPrestige(state)) {
       prestigeReadyAt = t;
       events.push({ t, what: 'PRESTIGE DISPONIBLE' });
+      if (!opts.noStop) break;
+    }
+    // With noStop, keep playing for this share of the time it took to wake the Lighthouse, then stop.
+    if (prestigeReadyAt !== null && opts.noStop && opts.stopAfterReady !== undefined && t >= prestigeReadyAt * (1 + opts.stopAfterReady)) {
       break;
     }
   }

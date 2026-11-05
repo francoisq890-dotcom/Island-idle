@@ -52,6 +52,7 @@ export class Hud {
   readonly runesBtn: HTMLButtonElement;
   readonly petsBtn: HTMLButtonElement;
   readonly gardenBtn: HTMLButtonElement;
+  readonly ascBtn: HTMLButtonElement;
   readonly muteBtn: HTMLButtonElement;
   readonly actBtn: HTMLButtonElement;
   readonly jumpBtn: HTMLButtonElement;
@@ -90,8 +91,9 @@ export class Hud {
     this.runesBtn = btn('icon-only hide', ICONS.rune, 'Runes (R)');
     this.petsBtn = btn('icon-only hide', ICONS.egg, 'Nid d’éther : familiers (N)');
     this.gardenBtn = btn('icon-only hide', ICONS.seed, 'Jardin d’étoiles : talents (T)');
+    this.ascBtn = btn('icon-only hide', ICONS.crown, 'Ascension, reliques et défis');
     this.menuBtn = btn('icon-only', `${ICONS.menu}`, 'Carnet de bord (Échap)');
-    this.actions.append(this.prestigeBtn, this.gardenBtn, this.petsBtn, this.runesBtn, this.workshopBtn, this.journalBtn, this.muteBtn, this.menuBtn);
+    this.actions.append(this.prestigeBtn, this.ascBtn, this.gardenBtn, this.petsBtn, this.runesBtn, this.workshopBtn, this.journalBtn, this.muteBtn, this.menuBtn);
 
     const pad = el('div', 'touch-pad');
     this.jumpBtn = el('button', 'touch-btn small', ICONS.jump) as HTMLButtonElement;

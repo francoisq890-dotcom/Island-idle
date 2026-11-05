@@ -6,6 +6,7 @@ import { achievementTotals, tiersUnlocked } from '../economy/achievements';
 import { formatDuration, formatNumber } from '../economy/format';
 import type { GameState } from '../economy/state';
 import { el } from './hud';
+import { cycleSeeds } from '../economy/ascension';
 import { ICONS } from './icons';
 import { framePanel } from './panels';
 import { statText } from './runes';
@@ -227,7 +228,7 @@ export class Journal {
   }
 
   private buildConstellations(s: GameState): void {
-    const ls = s.lifetimeSeeds;
+    const ls = cycleSeeds(s);
     this.body.appendChild(el('p', 'note', `Graines d’étoile gagnées au total : <b>${formatNumber(ls)}</b>. Chaque constellation allumée rend <b>toutes les îles suivantes</b> plus fortes. C’est l’objectif de long terme après le premier prestige.`));
     const sky = el('div', 'const-sky');
     CONSTELLATIONS.forEach((c, i) => {

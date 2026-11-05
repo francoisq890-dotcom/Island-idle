@@ -215,12 +215,17 @@ export const ZONE_ORDER: ZoneId[] = ['home', 'forge', 'geyser', 'sky'];
 export const PRESTIGE = {
   /** Total shards harvested during the current island needed before the Lighthouse wakes up. */
   unlockAt: 8e9,
-  /** The Lighthouse asks for this many times more after each descent. */
-  growth: 8,
+  /** The second island asks for this many times more than the first… */
+  firstJump: 40,
+  /** …then this many times more after each descent. */
+  growth: 4,
   /** Star seeds = floor(sqrt(runShards / divisor)). */
-  divisor: 3e7,
+  divisor: 2e8,
   /** Each star seed gives this much bonus production (additive). */
   bonusPerSeed: 0.05,
+  /** Beyond this many seeds each new seed counts less (seeds^softExp): see BALANCE.md. */
+  softSeeds: 100,
+  softExp: 0.75,
 };
 
 /** Offline production. */
@@ -235,11 +240,12 @@ export const OFFLINE = {
 
 /** Shards the island must produce before the Lighthouse wakes up (grows with each prestige). */
 export function prestigeThreshold(prestiges: number): number {
-  return PRESTIGE.unlockAt * Math.pow(PRESTIGE.growth, prestiges);
+  // The second island asks for a big step (the first descent brings many permanent gains at once), then `growth` per island.
+  return prestiges <= 0 ? PRESTIGE.unlockAt : PRESTIGE.unlockAt * PRESTIGE.firstJump * Math.pow(PRESTIGE.growth, prestiges - 1);
 }
 
 /** Star seeds for a run: √(shards / divisor), the divisor following the threshold so later islands stay rewarding. */
 export function seedsForRun(runShards: number, prestiges = 0): number {
   if (runShards < prestigeThreshold(prestiges)) return 0;
-  return Math.floor(Math.sqrt(runShards / (PRESTIGE.divisor * Math.pow(PRESTIGE.growth, prestiges * 0.5))));
+  return Math.floor(Math.sqrt(runShards / (PRESTIGE.divisor * Math.sqrt(prestigeThreshold(prestiges) / PRESTIGE.unlockAt))));
 }

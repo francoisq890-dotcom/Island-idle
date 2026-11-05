@@ -61,7 +61,7 @@ export function runeTotals(state: GameState): RuneTotals {
 }
 
 export function luckOf(state: GameState, totals: { luck: number } = bonusTotals(state), extraLuck = 0): number {
-  return (1 + state.altar.luck * ROLL.luckPerLevel + totals.luck + extraLuck) * (1 + state.seeds * ROLL.luckPerSeed) * nightLuckMult(state);
+  return (1 + state.altar.luck * ROLL.luckPerLevel + totals.luck + extraLuck) * (1 + ROLL.seedLuck * Math.log2(1 + state.seeds / ROLL.seedLuckScale)) * nightLuckMult(state);
 }
 
 export function bulkOf(state: GameState, totals: { bulk: number } = bonusTotals(state)): number {
@@ -142,6 +142,7 @@ export function canRoll(state: GameState, family: FamilyId): boolean {
   const f = FAMILIES[family];
   if (!f.altar) return false;
   if (f.nightOnly && !isNight(state)) return false;
+  if (state.ascension.challenge === 'sealed') return false;
   return familyUnlocked(state, family) && affordable(state, rollCostOf(state, family));
 }
 

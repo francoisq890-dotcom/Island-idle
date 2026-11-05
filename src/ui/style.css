@@ -775,3 +775,18 @@ table.odds .ef { color: var(--ink-soft); font-size: 14px; }
 .row.offer .medal { padding: 10px; }
 .float.surge { color: #f2e6ff; -webkit-text-stroke-color: #2c1752; text-shadow: 0 0 18px rgba(197,155,255,.95); }
 .res.shards.surge .rate b { color: var(--violet); }
+
+/* Ascension ------------------------------------------------------------------ */
+.crown-head { display: flex; gap: 10px; align-items: center; margin: 8px 2px 4px; padding: 8px 10px; border-radius: 6px; background: rgba(255,190,59,.16); box-shadow: inset 0 0 0 1px rgba(168,107,12,.35); }
+.crown-head > .ico { width: 46px; height: 46px; flex: none; }
+.crown-head b { font-family: var(--display); font-size: 22px; color: var(--gold); }
+.asc-progress { display: flex; flex-direction: column; gap: 4px; align-items: center; margin: 8px 0; font-size: 14px; color: var(--ink-soft); }
+.msbar.big { width: 100%; max-width: 420px; height: 10px; border-radius: 5px; }
+.pill-btn.gold-btn { background: var(--brass); color: var(--vellum-hi); border-color: var(--brass-deep); }
+.pill-btn.gold-btn.armed { background: var(--bad); }
+.row.relic.owned, .row.challenge.owned { background: rgba(255,190,59,.1); }
+.row.relic .tag, .row.challenge .tag { font-size: 11.5px; font-weight: 800; padding: 0 7px; border-radius: 8px; background: var(--vellum-lo); color: var(--ink-soft); }
+.row.relic .tag.on, .row.challenge .tag.on { background: var(--good); color: #fff; }
+.row.challenge .tag.away { background: var(--violet); color: #fff; }
+.challenge-now { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 10px; margin: 6px 0; border-radius: 6px; background: rgba(111,69,184,.14); font-size: 14px; }
+.panel.ascension .compare { margin-top: 8px; }

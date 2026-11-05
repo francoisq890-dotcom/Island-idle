@@ -21,7 +21,7 @@ export function petPower(state: GameState, p: Pet, petBonus = 0): number {
 }
 
 export function perchCount(state: GameState): number {
-  return PETS.perches + state.extraPerches + talentPerches(state);
+  return PETS.perches + state.extraPerches + talentPerches(state) + (state.ascension.relics.perch ? 1 : 0);
 }
 
 export function perched(state: GameState): Pet[] {

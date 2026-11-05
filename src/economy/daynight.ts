@@ -20,11 +20,13 @@ export function nightStart(state: GameState): number {
 }
 
 export function isNight(state: GameState): boolean {
+  if (state.ascension.challenge === 'moonless') return true;
   return (state.clock % DAY_NIGHT.cycle) >= nightStart(state);
 }
 
 /** 0 = full day … 1 = full night, with smooth dusk and dawn. */
 export function nightAmount(state: GameState): number {
+  if (state.ascension.challenge === 'moonless') return 1;
   const t = state.clock % DAY_NIGHT.cycle;
   const ns = nightStart(state);
   const tw = DAY_NIGHT.twilight;
