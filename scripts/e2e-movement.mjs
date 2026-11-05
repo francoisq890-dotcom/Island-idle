@@ -52,6 +52,8 @@ async function hold(page, keys, ms) {
   const start = await pos(page);
   await page.evaluate((keys) => keys.forEach((k) => window.dispatchEvent(new KeyboardEvent('keydown', { code: k.code, key: k.key }))), keys);
   await page.waitForTimeout(ms * 0.6);
+  // Wait for a frame to turn the keys into a movement vector (slow frames in CI).
+  await page.waitForFunction(() => Math.hypot(window.game.input.move.x, window.game.input.move.y) > 0.5, null, { timeout: 4000, polling: 30 }).catch(() => {});
   const move = await page.evaluate(() => ({ ...window.game.input.move }));
   await page.waitForTimeout(ms * 0.4);
   // Slow CI machines render few frames: keep holding (up to 4 s) until the explorer has really moved.
@@ -144,8 +146,12 @@ try {
       ev('pointerdown', sx, sy);
       window.dispatchEvent(new PointerEvent('pointermove', { pointerId: 7, pointerType: 'touch', clientX: sx + x * 50, clientY: sy - y * 50 }));
       await new Promise((r) => setTimeout(r, 540));
+      // Slow frames (CI): wait until a frame turned the drag into a movement, then until the explorer moved.
+      for (let i = 0; i < 130 && Math.hypot(window.game.input.move.x, window.game.input.move.y) < 0.5; i++) await new Promise((r) => setTimeout(r, 30));
       const m = { ...window.game.input.move };
+      const p0 = window.game.world.player.position.clone();
       await new Promise((r) => setTimeout(r, 360));
+      for (let i = 0; i < 130 && window.game.world.player.position.distanceTo(p0) < 0.8; i++) await new Promise((r) => setTimeout(r, 30));
       window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 7, pointerType: 'touch', clientX: sx + x * 50, clientY: sy - y * 50 }));
       await new Promise((r) => setTimeout(r, 250));
       return m;
