@@ -270,10 +270,11 @@ export function exportSave(state: GameState): string {
 }
 
 export function importSave(text: string, now = Date.now()): GameState {
-  const t = text.trim().replace(/\s+/g, '');
+  const trimmed = text.trim();
+  // Raw JSON (e.g. the backup of an unreadable save) is accepted as is: its strings may contain spaces.
+  if (trimmed.startsWith('{')) return deserialize(trimmed, now);
+  const t = trimmed.replace(/\s+/g, '');
   if (!t.startsWith(EXPORT_PREFIX)) {
-    // Also accept raw JSON for convenience.
-    if (t.startsWith('{')) return deserialize(t, now);
     throw new SaveError('Code de sauvegarde invalide (il doit commencer par « ILES1. »).');
   }
   let json: string;
@@ -286,30 +287,141 @@ export function importSave(text: string, now = Date.now()): GameState {
 }
 
 // --- Browser storage --------------------------------------------------------
+//
+// Three ways a player could silently lose progress, all guarded here:
+//  1. an unreadable save (corrupted, written by a newer build, migration bug)
+//     used to be replaced by a fresh game on the next autosave: it is now
+//     copied to BACKUP_KEY first and can be restored from the settings;
+//  2. importing a save reloads the page, and the `beforeunload` autosave of
+//     the running game overwrote the imported save: writes are now locked;
+//  3. two tabs on the same save overwrote each other (the stale tab won when
+//     closed): each page claims the save with a session id, and a page whose
+//     claim was taken by another tab stops writing.
 
-export function saveToStorage(state: GameState, now = Date.now()): void {
-  state.lastSeen = now;
-  try {
-    localStorage.setItem(STORAGE_KEY, serialize(state));
-  } catch {
-    // Storage full or disabled (private mode): the game keeps running.
-  }
-}
+export const BACKUP_KEY = 'iles-ether.save.backup';
+export const OWNER_KEY = 'iles-ether.owner';
 
-export function loadFromStorage(): GameState | null {
+/** Result of a write attempt. */
+export type SaveResult = 'saved' | 'locked' | 'foreign' | 'failed';
+
+let sessionId = Math.random().toString(36).slice(2) + Date.now().toString(36);
+let locked = false;
+let loadError: string | null = null;
+
+function storage(): Storage | null {
   try {
-    const t = localStorage.getItem(STORAGE_KEY);
-    if (!t) return null;
-    return deserialize(t);
+    return typeof localStorage === 'undefined' ? null : localStorage;
   } catch {
     return null;
   }
 }
 
-export function clearStorage(): void {
+/** This page becomes the only writer of the save (the newest tab wins). */
+export function claimStorage(): void {
   try {
-    localStorage.removeItem(STORAGE_KEY);
+    storage()?.setItem(OWNER_KEY, sessionId);
   } catch {
     /* ignore */
   }
+}
+
+/** True when another tab has claimed the save since this page did. */
+export function storageTakenElsewhere(): boolean {
+  try {
+    const owner = storage()?.getItem(OWNER_KEY);
+    return !!owner && owner !== sessionId;
+  } catch {
+    return false;
+  }
+}
+
+/** No more writes from this page (until reload): used before a reload that must not be overwritten. */
+export function lockStorage(): void {
+  locked = true;
+}
+
+export function saveToStorage(state: GameState, now = Date.now()): SaveResult {
+  if (locked) return 'locked';
+  if (storageTakenElsewhere()) {
+    locked = true;
+    return 'foreign';
+  }
+  state.lastSeen = now;
+  try {
+    const st = storage();
+    if (!st) return 'failed';
+    st.setItem(STORAGE_KEY, serialize(state));
+    return 'saved';
+  } catch {
+    // Storage full or disabled (private mode): the game keeps running.
+    return 'failed';
+  }
+}
+
+/**
+ * Load the save of this browser. An unreadable save is never lost: it is kept
+ * in BACKUP_KEY (see `loadFailure`, `readBackup`) before a new game starts.
+ */
+export function loadFromStorage(now = Date.now()): GameState | null {
+  loadError = null;
+  const st = storage();
+  let t: string | null = null;
+  try {
+    t = st?.getItem(STORAGE_KEY) ?? null;
+  } catch {
+    return null;
+  }
+  if (!t) return null;
+  try {
+    return deserialize(t, now);
+  } catch (e) {
+    loadError = e instanceof SaveError ? e.message : 'Sauvegarde illisible.';
+    try {
+      st?.setItem(BACKUP_KEY, t);
+    } catch {
+      // Storage full: keep the unreadable save in place and never overwrite it.
+      locked = true;
+    }
+    return null;
+  }
+}
+
+/** Why the last `loadFromStorage` could not read the save (null if it could, or if there was none). */
+export function loadFailure(): string | null {
+  return loadError;
+}
+
+/** The raw text of the last unreadable save, if any (it can be pasted into the import box). */
+export function readBackup(): string | null {
+  try {
+    return storage()?.getItem(BACKUP_KEY) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Write an imported save and lock storage so the page reload cannot overwrite it. */
+export function writeImportedSave(state: GameState, now = Date.now()): boolean {
+  // An import is an explicit choice of the player: this page takes the save over.
+  claimStorage();
+  locked = false;
+  const ok = saveToStorage(state, now) === 'saved';
+  locked = true;
+  return ok;
+}
+
+export function clearStorage(): void {
+  locked = true;
+  try {
+    storage()?.removeItem(STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Tests only: start a new page session. */
+export function _resetStorageSession(id = Math.random().toString(36).slice(2)): void {
+  sessionId = id;
+  locked = false;
+  loadError = null;
 }

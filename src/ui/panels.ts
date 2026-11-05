@@ -3,6 +3,7 @@
  * offline report and prestige. Each line of a ledger is one decision: what it
  * is, what it yields, what it costs.
  */
+import { readBackup } from '../save/save';
 import { MACHINES, MACHINE_ORDER, PRESTIGE, UPGRADES, ZONES, ZONE_ORDER, type Cost, type MachineId, type UpgradeDef, type ZoneId } from '../config/economy';
 import {
   affordProgress,
@@ -405,6 +406,7 @@ export class Panels {
           <button class="pill-btn" data-act="export">Exporter</button>
           <button class="pill-btn" data-act="copy">Copier</button>
           <button class="pill-btn primary" data-act="import">Importer</button>
+          <button class="pill-btn hide" data-act="backup">Sauvegarde de secours</button>
         </div>
         <p class="note save-msg"></p>
         <div class="section-title">Statistiques</div>
@@ -443,6 +445,14 @@ export class Panels {
       const err = this.actions.importSave(ta.value);
       msg.textContent = err ?? 'Sauvegarde chargée !';
       msg.style.color = err ? 'var(--bad)' : 'var(--good)';
+    });
+    // An unreadable save is kept aside (save.ts): it can be pasted back here.
+    const backupBtn = this.menu.querySelector('[data-act="backup"]')! as HTMLButtonElement;
+    backupBtn.classList.toggle('hide', !readBackup());
+    backupBtn.addEventListener('click', () => {
+      ta.value = readBackup() ?? '';
+      msg.textContent = 'Voici l’ancienne sauvegarde mise de côté. « Importer » essaie de la recharger.';
+      msg.style.color = '';
     });
     let armed = false;
     const resetBtn = this.menu.querySelector('[data-act="reset"]')! as HTMLButtonElement;

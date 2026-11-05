@@ -4,6 +4,7 @@ Jeu incrémental (idle/clicker) **en 3D** dans le navigateur : un explorateur su
 
 - **Jeu en ligne** : https://francoisq890-dotcom.github.io/Island-idle/ (déployé par GitHub Actions à chaque push sur `main`).
 - **Docs à lire avant de toucher au design** : `DESIGN.md` (frise de progression, systèmes, ce qui est exclu), `BALANCE.md` (passe d’équilibrage globale, cibles, plafonds), `DECISIONS.md` (choix de design et technique, direction artistique de l’UI) et `README.md` (contrôles, fonctionnalités, limites).
+- **État des lieux et suite** : `AUDIT.md` (audit critique, problèmes classés critique / important / mineur, avec ce qui est corrigé) et `ROADMAP.md` (les 10 prochaines améliorations classées par impact / effort). Commencer par les « importants » de l’audit avant d’ajouter du contenu.
 - Le propriétaire du projet travaille sans relire chaque étape : il veut des **commits + push sur `main` après chaque étape stable**, pour que le jeu en ligne reste toujours jouable. Les décisions vont dans `DECISIONS.md`.
 
 ## Commandes
@@ -11,7 +12,7 @@ Jeu incrémental (idle/clicker) **en 3D** dans le navigateur : un explorateur su
 ```bash
 npm install
 npm run dev          # http://localhost:5173
-npm test             # Vitest (98 tests, ≈ 1 min) : économie, runes, fusion, succès, familiers, talents, expéditions, Ascension, sauvegarde/migrations, hors-ligne, clavier, équilibrage (5 profils × cycle complet)
+npm test             # Vitest (101 tests, ≈ 1 min) : économie, runes, fusion, succès, familiers, talents, expéditions, Ascension, sauvegarde/migrations, stockage (secours, import, multi-onglet), hors-ligne, clavier, équilibrage (5 profils × cycle complet)
 npm run simulate     # campagne du bot jusqu’à l’Ascension, 5 profils (≈ 50 s) ; `-- --verbose` détaille chaque île ; code ≠ 0 si une cible est ratée
 npx tsx scripts/make-save.ts 25 2   # sauvegarde de test : 25 min de jeu après 2 descentes (pour les captures)
 npm run test:e2e     # Playwright : 41 cas de déplacement (lance son propre serveur Vite sur :5199)
@@ -64,7 +65,8 @@ src/
     daynight.ts, guardians.ts, familiars.ts, talents.ts, expeditions.ts, events2.ts (faille, marchand), ascension.ts
     achievements.ts, objectives.ts (20 étapes), offline.ts, format.ts
     simulation.ts    bot (profils, chanceux, acheteur au hasard) ; campaign.ts (cycle complet) ; balanceTargets.ts (cibles = tests)
-  save/save.ts       sérialisation défensive, MIGRATIONS v1→v2→v3→v4, export/import « ILES1.<base64> »
+  save/save.ts       sérialisation défensive, MIGRATIONS v1→v2→v3→v4, export/import « ILES1.<base64> » (ou JSON brut),
+                     stockage sûr : copie de secours d’une sauvegarde illisible, verrou après import, un seul onglet écrivain
   world/             TOUT LE 3D
     world.ts         possède les objets 3D, sync(state), interactables, pick(), nearest(), descend/rise/ascendUp
     renderer.ts      ciel jour/nuit (étoiles, lune, aurores), lumières, ombres, post-process (GTAO, bloom, rayons, étalonnage), presets de qualité
@@ -94,6 +96,12 @@ Flux de données : `GameState` (mutable, sauvegardé) → `computeRates(state)` 
   4. ajouter un test dans `tests/save.test.ts` ou `tests/runes.test.ts`.
 
   Les sauvegardes des joueurs doivent **toujours** se charger.
+- **Écrire dans `localStorage` uniquement via `save/save.ts`** (`saveToStorage`, `writeImportedSave`, `clearStorage`). Ces fonctions portent trois garde-fous (AUDIT.md C1 à C3) :
+  - une sauvegarde illisible est copiée dans `iles-ether.save.backup` avant toute écriture, et le Carnet de bord la propose (« Sauvegarde de secours ») ;
+  - après un import ou un effacement, le stockage est **verrouillé** jusqu’au rechargement (sinon `beforeunload` réécrit l’ancien état) ;
+  - chaque page réclame la sauvegarde (`iles-ether.owner`). Une page dont la réclamation est reprise par un autre onglet reçoit `'foreign'` et se fige (`Game.goStale`, écran « Partie ouverte ailleurs »).
+
+  Tests : `tests/storage.test.ts` (faux `localStorage` en mémoire, `_resetStorageSession` pour simuler un autre onglet).
 - **3D** :
   - Pour tout objet répété, utiliser `InstancedMesh` + `build()` (géométries fusionnées avec couleurs et `emit` par sommet) + un `makeMaterial()` partagé. Éviter les matériaux par objet.
   - Les parties lumineuses passent par `emit` (masque émissif) pour que seul le bloom les touche.
@@ -151,7 +159,9 @@ Pour trouver un emballement : lancer un profil avec `noRunes`/`noPets`/`lucky`, 
 
 ## État actuel
 
-Trois itérations livrées et déployées :
+Trois itérations livrées et déployées, puis un **audit** (AUDIT.md). Ses 3 bugs critiques (import toujours écrasé, sauvegarde illisible détruite, onglets qui s’écrasent) sont corrigés et testés. Les importants restent ouverts.
+
+Les itérations :
 1. **Tranche verticale** : 4 îles, 5 machines, convoyeurs, ponts, prestige, hors-ligne, tutoriel.
 2. **Itération 2** : déplacement + e2e, frappe de pioche, UI « Carnet du Cartographe », runes, événements, succès, Constellations.
 3. **Itération 3** (DESIGN.md) :
@@ -163,13 +173,21 @@ Trois itérations livrées et déployées :
    - passe d’équilibrage globale ;
    - polish (presets de qualité, rayons, GTAO, vent, scintillement, écrasement/étirement, compteur de série, gains volants, punch caméra, vibrations, musique adaptative).
 
-Format de sauvegarde : **v4** (clé `iles-ether.save`).
+Format de sauvegarde : **v4** (clé `iles-ether.save` ; aussi `iles-ether.save.backup`, la copie d’une sauvegarde illisible, et `iles-ether.owner`, l’onglet écrivain).
 - **v3** : succès en paliers (id → palier), index des runes.
 - **v4** : étape « premier familier » insérée à l’index 13 du tutoriel ; les joueurs déjà au-delà reçoivent l’œuf offert.
 
 Les champs ajoutés ensuite (talents, expéditions, Ascension) sont relus de façon défensive, sans changement de version.
 
 ## Bugs et limites connus
+
+Liste complète et classée dans **AUDIT.md**. Les plus importants encore ouverts :
+- **B1** : l’économie avance avec le `dt` visuel plafonné à 0,1 s (et ralentit pendant le ralenti des légendaires). Sous 10 fps, la production est perdue.
+- **B2** : le butin d’expédition est figé en absolu au départ. Deux odyssées lancées avant une descente valent 2,4 fois le seuil de l’île suivante.
+- **B3** : « Max » et « ×10 » dans l’Atelier ignorent la réduction de coût (`ui/panels.ts`, `maxAffordable`).
+- **K3** : le bonus des graines est affiché linéaire (`ui/talents.ts`, `ui/panels.ts`), alors qu’il est adouci au-delà de 100 graines.
+- **E1 / E2** : les bonus plafonnent dès l’île 1 (chance bloquée à +421 % dès l’île 5) ; les îles 7 à 9 sont les plus longues.
+- **K1** : le tutoriel s’arrête au Jardin ; la plupart des systèmes ne sont annoncés que par des toasts.
 
 - **Bug signalé « seule Z fonctionne »** : jamais reproduit à l’identique dans Chromium. Trois causes réelles ont été corrigées (codes de touches dépendant de la disposition ou vides, joueur emprisonné dans une machine, focus capturé par un contrôle de formulaire). Si le propriétaire le signale à nouveau : demander navigateur et version, et tester Firefox avec `privacy.resistFingerprinting`. Seul Chromium est disponible dans l’environnement cloud.
 - **60 fps non mesurés sur un vrai GPU** (headless = rendu logiciel). Partie avancée en « Haute » : ~320 appels de dessin toutes passes comprises, ~440K triangles ; en « Ultra » (GTAO) ~630 appels. L’Automatique baisse la résolution puis descend d’un preset si les frames restent lentes.
@@ -183,6 +201,20 @@ Les champs ajoutés ensuite (talents, expéditions, Ascension) sont relus de fa�
 - Pas de remappage des touches, pas d’autre langue que le français.
 
 ## Idées pour la suite
+
+La feuille de route classée par impact / effort est dans **ROADMAP.md** :
+1. le coffre du retour ;
+2. la prochaine découverte toujours visible ;
+3. un carnet de route après le tutoriel ;
+4. une fin de cycle qui progresse ;
+5. le mobile compact et les nombres en français ;
+6. la vue d’ensemble (V) ;
+7. l’automatisation en reliques ;
+8. des familiers qui évoluent ;
+9. les défis v2 ;
+10. une 5e île.
+
+Idées plus anciennes :
 
 - **Découpage de `game.ts`** (≈ 2 000 lignes) en contrôleurs : runes, gardiens, familiers/expéditions, événements, Ascension. Le bus `core/events.ts` pourrait servir à les découpler.
 - **Contenu** : une 5e île et une 6e machine ; défis supplémentaires (la liste est extensible dans `config/ascension.ts`) ; plus de mythiques à effet.

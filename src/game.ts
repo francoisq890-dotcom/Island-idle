@@ -33,7 +33,7 @@ import { formatDuration, formatNumber, formatRate } from './economy/format';
 import { OBJECTIVES, type Objective, type ObjectiveTarget } from './economy/objectives';
 import { applyOffline, shouldShowOfflineReport, type OfflineReport } from './economy/offline';
 import { createInitialState, type GameState } from './economy/state';
-import { clearStorage, exportSave, importSave, loadFromStorage, saveToStorage } from './save/save';
+import { claimStorage, clearStorage, exportSave, importSave, loadFailure, loadFromStorage, OWNER_KEY, readBackup, saveToStorage, storageTakenElsewhere, writeImportedSave } from './save/save';
 import { costHtml, Hud } from './ui/hud';
 import { ICONS } from './ui/icons';
 import { MACHINE_ICON, Panels } from './ui/panels';
@@ -93,6 +93,8 @@ export class Game {
   private near: Interactable | null = null;
   private started = false;
   private busy = false; // cinematic in progress
+  /** Another tab took the save over: this page no longer plays nor writes. */
+  private stale = false;
   private holdTimer = 0;
   private offlineReport: OfflineReport | null = null;
   private tmpScreen = { x: 0, y: 0, visible: false };
@@ -119,6 +121,8 @@ export class Game {
 
   constructor(private canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     const loaded = loadFromStorage();
+    // This page becomes the only writer of the save (another open tab stops writing).
+    claimStorage();
     this.state = loaded ?? createInitialState();
     if (loaded) this.offlineReport = applyOffline(this.state);
     if (this.offlineReport && this.offlineReport.awaySeconds > 8 * 3600) this.state.flags.sec_patient = true;
@@ -319,7 +323,8 @@ export class Game {
 
     window.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') this.save();
-      else if (this.started) {
+      else if (this.started && !this.stale) {
+        if (storageTakenElsewhere()) return this.goStale();
         // Credit time spent in another tab (the loop is paused by the browser).
         const r = applyOffline(this.state);
         this.markDirty();
@@ -327,6 +332,10 @@ export class Game {
       }
     });
     window.addEventListener('beforeunload', () => this.save());
+    // Another tab opened the game: this one pauses instead of overwriting its progress.
+    window.addEventListener('storage', (e) => {
+      if (e.key === OWNER_KEY && storageTakenElsewhere()) this.goStale();
+    });
 
     // Title-screen camera.
     this.world.rig.cinematic = { pos: new THREE.Vector3(), look: new THREE.Vector3(0, 0, -8), weight: 1 };
@@ -376,6 +385,10 @@ export class Game {
           this.panels.showOffline(this.offlineReport, () => this.audio.welcome());
           this.audio.welcome();
         }
+        const failure = loadFailure();
+        if (failure && readBackup()) {
+          this.hud.toast('book', 'Ancienne sauvegarde mise de côté', `${failure} Une copie est conservée : Carnet de bord (Échap), « Sauvegarde de secours ».`, 'gold');
+        }
         this.offlineReport = null;
       },
     });
@@ -392,6 +405,8 @@ export class Game {
   }
 
   private frame(realDt: number): void {
+    // A stale tab (the save was claimed by another one) is frozen: no economy, no writes.
+    if (this.stale) return;
     const dt = realDt * this.timeScale;
     this.time += dt;
     this.tweens.update(dt);
@@ -2025,14 +2040,29 @@ export class Game {
   }
 
   save(): void {
-    if (this.busy) return;
-    saveToStorage(this.snapshot());
+    if (this.busy || this.stale) return;
+    if (saveToStorage(this.snapshot()) === 'foreign') this.goStale();
+  }
+
+  /**
+   * The save was claimed by another tab: this page stops playing and writing
+   * (closing it later must not overwrite the newer progress).
+   */
+  private goStale(): void {
+    if (this.stale) return;
+    this.stale = true;
+    const el = document.createElement('div');
+    el.className = 'stale-overlay';
+    el.innerHTML = `<div class="stale-card"><h3>Partie ouverte ailleurs</h3><p>Les Îles d’Éther sont ouvertes dans un autre onglet. Celui-ci s’est mis en pause pour ne pas écraser ta progression.</p><button class="pill-btn primary">Reprendre ici</button></div>`;
+    el.querySelector('button')!.addEventListener('click', () => location.reload());
+    document.body.appendChild(el);
   }
 
   private importSave(text: string): string | null {
     try {
       const s = importSave(text);
-      saveToStorage(s);
+      // Locks storage: neither the autosave nor `beforeunload` may overwrite the imported save.
+      if (!writeImportedSave(s)) return 'Impossible d’écrire la sauvegarde dans ce navigateur (stockage plein ou désactivé).';
       window.setTimeout(() => location.reload(), 600);
       return null;
     } catch (e) {
