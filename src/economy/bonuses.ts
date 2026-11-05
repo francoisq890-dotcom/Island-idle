@@ -20,13 +20,13 @@ function keyOf(s: GameState): string {
   for (const id in s.achievements) k += id + s.achievements[id];
   k += '|';
   for (const id in s.talents) k += id + s.talents[id];
-  k += '|' + s.ascension.crowns + (s.ascension.challenge ?? '') + Object.keys(s.ascension.done).join('');
+  k += '|' + Object.values(s.zones).filter(Boolean).length + '|' + s.ascension.crowns + (s.ascension.challenge ?? '') + Object.keys(s.ascension.done).join('');
   return k;
 }
 
-/** Logarithmic soft cap above k. */
+/** Soft cap: above k a bonus only grows as (x / k)^0.4. */
 export function softCap(x: number, k: number): number {
-  return x <= k ? x : k * (1 + Math.log(x / k));
+  return x <= k ? x : k * Math.pow(x / k, 0.4);
 }
 
 export function bonusTotals(state: GameState): BonusTotals {

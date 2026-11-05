@@ -301,3 +301,44 @@ Résultats (`npm run simulate`) :
 - Sans runes, le profil moyen met 59 min : les runes accélèrent ×1,6, elles comptent sans écraser le reste.
 - **Deuxième île** : 8 min (au lieu de 36), avec 54 graines au lieu de 32. Nettement plus rapide et plus généreuse.
 - Ces cibles sont vérifiées par `tests/balance.test.ts` et par la CI.
+
+---
+
+# Itération 3
+
+Le design complet (frise de progression, systèmes, ce que je n’ai pas fait) est dans **DESIGN.md**. L’équilibrage chiffré, profil par profil, est dans **BALANCE.md**. Ici, seulement les choix et leurs raisons.
+
+## 1. Succès v2
+- **62 succès, 163 paliers** (bronze, argent, or), en 6 catégories ; 9 cachés. Chaque palier donne un petit bonus permanent qui passe par `bonusTotals`, donc sous les plafonds.
+- Les conditions lisent des **compteurs à vie** (`GameState.counters`) : un succès ne se perd jamais au prestige, et les records (meilleur coup, île la plus rapide) sont des « plus bas c’est mieux » (`lower`).
+- Sauvegarde **v3** : les 32 anciens succès donnent le palier équivalent, le reste est recalculé au chargement **sans avalanche de notifications** (vérification silencieuse au démarrage).
+
+## 2. Cycle jour/nuit
+- 8 min de jeu (6 min de jour, 2 min de nuit). La nuit ne touche **jamais la production** : le calcul hors-ligne reste exact. Elle augmente la chance (×1,5), réveille l’Autel de Lune et fait briller le monde.
+- Rendu : uniforme partagé `GLOBAL_EMIT` (toutes les matières émissives brillent plus la nuit sans changer de matériau), ciel en shader (étoiles hachées sur la sphère, lune, aurores), lumières et brouillard interpolés.
+
+## 3. Runes v2, gardiens, Creuset
+- Les **fragments** sont une monnaie distincte (gardiens, expéditions, marchand). Sinon, la fusion concurrencerait directement les machines.
+- **Fusion** : 5 copies + fragments → rareté supérieure, jusqu’à légendaire seulement (les mythiques et célestes restent une chasse).
+- **Pitié** à 100 tirages (épique) et 1 000 (légendaire), compteurs visibles : légère, elle évite seulement les séries absurdes.
+- **Mythiques à effet** : Écho (second impact à 50 %), Phénix (un critique → 3 critiques ; les critiques forcés ne rechargent pas, sinon la chaîne serait infinie), Éclipse (nuit ×2).
+- **Gardiens** : l’onde de choc à sauter réutilise le saut existant ; c’est un vrai geste de combat sans nouvelle commande.
+
+## 4. Familiers, talents, expéditions
+- Les **familiers** sont l’automatisation de mi-partie : ils frappent pour une part de la valeur d’un coup. Cette valeur est calculée **avant** leur revenu, donc pas de boucle.
+- **Talents** : les graines sont *plantées* et continuent de compter pour la production. Choisir un talent n’est jamais une perte sèche, et les voies exclusives donnent un vrai choix de style. Réinitialisation gratuite pendant les 3 premières minutes d’une île seulement, pour que le choix de voie compte.
+- **Expéditions** en temps réel (horodatage) : elles avancent quand le jeu est fermé, et le butin est figé au départ (pas d’exploit en changeant de production pendant le voyage).
+- Les buffs temporaires (Afflux d’une faille) ne comptent **jamais** hors-ligne.
+
+## 5. Ascension
+- Seuil : 1 000 graines gagnées **dans le cycle**. Les couronnes donnent +10 % de production et +10 % de chance ; tout le reste est **mécanique** (6 reliques, 5 défis).
+- L’Ascension remet à zéro les graines, les talents, les constellations et l’indice d’île du Phare (`islandIndex`), mais conserve les compteurs à vie et les succès.
+- Les **défis** recommencent l’île en cours sans gain : on ne peut pas les « farmer » pour des graines.
+
+## 6. Équilibrage global
+Voir BALANCE.md. En résumé :
+- plafonds propres aux runes, qui grandissent avec les îles reliées ;
+- plafonds doux globaux en x^0,4 ;
+- chance des graines logarithmique ;
+- seuil du Phare 1,8e10, ×20 pour la 2e île, puis ×2,9 ;
+- cinq profils de joueur testés automatiquement sur un cycle complet jusqu’à l’Ascension.

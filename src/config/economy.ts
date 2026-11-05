@@ -214,18 +214,18 @@ export const ZONE_ORDER: ZoneId[] = ['home', 'forge', 'geyser', 'sky'];
 /** Prestige: "faire descendre l'île". */
 export const PRESTIGE = {
   /** Total shards harvested during the current island needed before the Lighthouse wakes up. */
-  unlockAt: 8e9,
+  unlockAt: 1.8e10,
   /** The second island asks for this many times more than the first… */
-  firstJump: 40,
+  firstJump: 20,
   /** …then this many times more after each descent. */
-  growth: 4,
+  growth: 2.9,
   /** Star seeds = floor(sqrt(runShards / divisor)). */
-  divisor: 2e8,
+  divisor: 1.4e8,
   /** Each star seed gives this much bonus production (additive). */
   bonusPerSeed: 0.05,
   /** Beyond this many seeds each new seed counts less (seeds^softExp): see BALANCE.md. */
   softSeeds: 100,
-  softExp: 0.75,
+  softExp: 0.8,
 };
 
 /** Offline production. */

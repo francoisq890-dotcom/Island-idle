@@ -42,6 +42,13 @@ import { mulberry32 } from '../core/noise';
 import { canPlant, pickPath, plant } from './talents';
 import { TALENT_BY_ID } from '../config/talents';
 
+/**
+ * Lucky profile: every loot draw u becomes u^LUCKY_POW. With 1.5, a 1-in-N rarity
+ * comes about (1/N)^(1/1.5): roughly 10 times more often for legendaries, 100 times
+ * for celestials — the luckiest plausible player (see BALANCE.md).
+ */
+export const LUCKY_POW = 1.5;
+
 /** Talent priorities of the bot. */
 export const ACTIVE_TALENTS = ['grip', 'clover', 'dreamer', 'streak', 'eye', 'grip', 'thrift', 'pathPick', 'founder', 'alchemy', 'patience', 'hunter', 'clover', 'eye', 'thrift', 'streak', 'founder', 'generous', 'foreman'];
 export const IDLE_TALENTS = ['dreamer', 'clover', 'founder', 'thrift', 'foreman', 'pathAuto', 'clover', 'thrift', 'founder', 'alchemy', 'patience', 'grip', 'generous', 'eye', 'dreamer'];
@@ -63,6 +70,9 @@ export interface SimResult {
   maxGapAt: number;
   purchases: number;
   rolls: number;
+  /** Longest stretch (s) during which nothing could be bought (rune rolls excluded). */
+  maxBlocked: number;
+  maxBlockedAt: number;
   guardians: number;
   fusions: number;
   pets: number;
@@ -83,6 +93,10 @@ export interface SimOptions {
   noRunes?: boolean;
   /** Disable familiars. */
   noPets?: boolean;
+  /** Force favourable loot draws (runes, eggs, guardian drops). */
+  lucky?: boolean;
+  /** 'random': buys whatever is affordable, at random (a player who reads nothing). */
+  strategy?: 'greedy' | 'random';
   /** Keep playing after the prestige becomes available (until maxSeconds). */
   noStop?: boolean;
   /** With noStop: stop after playing this share longer than the time to wake the Lighthouse. */
@@ -158,8 +172,13 @@ function preview(state: GameState, c: Candidate): GameState {
   return s2;
 }
 
-function choose(state: GameState, clickRate: number, noRunes: boolean, rollReady: boolean, noPets = false): Candidate | null {
+function choose(state: GameState, clickRate: number, noRunes: boolean, rollReady: boolean, noPets = false, random: (() => number) | null = null): Candidate | null {
   const rates = computeRates(state);
+  if (random) {
+    // A player who reads nothing: buys any affordable option at random (bridges included).
+    const ok = candidates(state, noRunes, rollReady, noPets).filter((c) => canAfford(state, c.cost));
+    return ok.length ? ok[Math.floor(random() * ok.length) % ok.length] : null;
+  }
   const lv = lumenValue(state);
   const base = score(rates, lv, clickRate);
   let best: Candidate | null = null;
@@ -216,6 +235,10 @@ export function simulateRun(opts: SimOptions = {}): SimResult {
   const noPets = !!opts.noPets;
   const catchRate = opts.eventCatch ?? 0.75;
   const rng = mulberry32(opts.seed ?? 7);
+  // "Lucky" profile: every loot draw is pushed towards the rarest outcomes.
+  const lootRng = opts.lucky ? () => Math.pow(rng(), LUCKY_POW) : rng;
+  const hatchRng = opts.lucky ? () => 1 - Math.pow(rng(), LUCKY_POW) : rng;
+  const randomBuyer = opts.strategy === 'random';
   const state = opts.startState ? clone(opts.startState) : createInitialState(0);
 
   const events: SimEvent[] = [];
@@ -238,6 +261,9 @@ export function simulateRun(opts: SimOptions = {}): SimResult {
   let fusions = 0;
   let pets = 0;
   let strikes = 0;
+  let blocked = 0;
+  let maxBlocked = 0;
+  let maxBlockedAt = 0;
   let nextRift = (RIFT.first[0] + RIFT.first[1]) / 2;
   let nextMerchant = (MERCHANT.first[0] + MERCHANT.first[1]) / 2;
   const plantTalents = () => {
@@ -315,7 +341,7 @@ export function simulateRun(opts: SimOptions = {}): SimResult {
         const strikes = cps * Math.min(1.6, rates.strikeSpeed);
         const fight = GUARDIAN.hp / Math.max(0.1, strikes * (1 + rates.critChance)) + 3;
         if (clicking && fight < GUARDIAN.time && rng() < catchRate) {
-          defeatGuardian(state, rates, fight, rng);
+          defeatGuardian(state, rates, fight, lootRng);
           guardians++;
         }
       }
@@ -331,18 +357,18 @@ export function simulateRun(opts: SimOptions = {}): SimResult {
       }
       if (nextMerchant <= 0) {
         nextMerchant = (MERCHANT.every[0] + MERCHANT.every[1]) / 2;
-        for (const o of merchantOffers(state, rates)) if (o.id !== 'rune' && o.available && (o.cost.lumen ?? 0) * 3 < state.lumen) buyOffer(state, rates, o.id, rng);
+        for (const o of merchantOffers(state, rates)) if (o.id !== 'rune' && o.available && (o.cost.lumen ?? 0) * 3 < state.lumen) buyOffer(state, rates, o.id, lootRng);
       }
     }
     if (!noPets && expeditionsUnlocked(state)) {
       const now = t * 1000;
-      for (let i = state.expeditions.length - 1; i >= 0; i--) if (isDone(state.expeditions[i], now)) claimExpedition(state, i, now, rng);
+      for (let i = state.expeditions.length - 1; i >= 0; i--) if (isDone(state.expeditions[i], now)) claimExpedition(state, i, now, lootRng);
       const resting = state.pets.find((p) => !p.perched && !p.away);
       if (resting && freeSlots(state) > 0) startExpedition(state, rates, resting.id, 'voyage', now);
     }
 
     // Eggs hatch as soon as they are laid.
-    while (!noPets && state.eggs > 0 && hatch(state, luckOf(state), rng)) pets++;
+    while (!noPets && state.eggs > 0 && hatch(state, luckOf(state), hatchRng)) pets++;
 
     // Tutorial rewards (the bot "walks" instantly).
     state.flags.nearCrystal = true;
@@ -358,6 +384,13 @@ export function simulateRun(opts: SimOptions = {}): SimResult {
 
     const everySecond = tickN % Math.round(1 / dt) === 0;
     if (everySecond) {
+      // Honest "blocked" metric: nothing at all can be bought (rune rolls excluded).
+      const any = candidates(state, noRunes, false, noPets).some((c) => c.kind !== 'roll' && canAfford(state, c.cost));
+      blocked = any ? 0 : blocked + 1;
+      if (blocked > maxBlocked) {
+        maxBlocked = blocked;
+        maxBlockedAt = t;
+      }
       // Fusion: always fuse the rarest duplicates first.
       if (!noRunes && state.fragments > 0) {
         for (const def of [...RUNES].sort((a, b) => RARITY_INDEX[b.rarity] - RARITY_INDEX[a.rarity])) {
@@ -376,13 +409,13 @@ export function simulateRun(opts: SimOptions = {}): SimResult {
     // Auto-roll (when unlocked): the best family, with the reserve rule.
     if (!noRunes && state.altar.auto && rollTimer <= 0) {
       const fam = [...ALTAR_FAMILIES].reverse().find((f) => familyUnlocked(state, f) && autoRollAllowed(state, f, rates));
-      if (fam && doRoll(state, fam, rng).length) {
+      if (fam && doRoll(state, fam, lootRng).length) {
         rolls++;
         rollTimer = cooldownOf(state);
       }
     }
 
-    if (!target || everySecond) target = choose(state, clicking ? cps : 0, noRunes, rollTimer <= 0, noPets);
+    if (!target || everySecond) target = choose(state, clicking ? cps : 0, noRunes, rollTimer <= 0, noPets, randomBuyer ? rng : null);
     let bought = 0;
     while (target && canAfford(state, target.cost) && bought < 50) {
       let ok = false;
@@ -392,7 +425,7 @@ export function simulateRun(opts: SimOptions = {}): SimResult {
       else if (target.kind === 'egg') ok = buyEgg(state);
       else if (target.kind === 'pet') ok = levelUp(state, target.id);
       else if (rollTimer <= 0) {
-        ok = doRoll(state, target.id, rng).length > 0;
+        ok = doRoll(state, target.id, lootRng).length > 0;
         if (ok) {
           rolls++;
           rollTimer = cooldownOf(state);
@@ -417,7 +450,7 @@ export function simulateRun(opts: SimOptions = {}): SimResult {
       else note(t, label);
       if (target.kind === 'zone') zoneTimes[target.id] = t;
       if (target.kind === 'machine' && firstMachineTimes[target.id] === undefined) firstMachineTimes[target.id] = t;
-      target = choose(state, clicking ? cps : 0, noRunes, rollTimer <= 0, noPets);
+      target = choose(state, clicking ? cps : 0, noRunes, rollTimer <= 0, noPets, randomBuyer ? rng : null);
     }
 
     if (prestigeReadyAt === null && canPrestige(state)) {
@@ -443,6 +476,8 @@ export function simulateRun(opts: SimOptions = {}): SimResult {
     maxGapAt,
     purchases,
     rolls,
+    maxBlocked,
+    maxBlockedAt,
     guardians,
     fusions,
     pets,

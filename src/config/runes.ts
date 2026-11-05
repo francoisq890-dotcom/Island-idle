@@ -64,15 +64,31 @@ export const STAT_CAP: Partial<Record<RuneStat, number>> = {
 };
 
 /**
+ * What runes alone can give at most (before achievements, talents, crowns).
+ * A lucky streak of celestial runes must never make an island trivial.
+ */
+export const RUNE_CAP: Partial<Record<RuneStat, number>> = {
+  prod: 3,
+  click: 4,
+  lumen: 3,
+  luck: 2.5,
+  frag: 2,
+  cost: 0.4,
+  crit: 0.3,
+  speed: 1,
+  bulk: 2,
+};
+
+/**
  * Soft caps: beyond `k`, a bonus only grows logarithmically (k × (1 + ln(x / k))).
  * Every multiplier of the game meets here, so the systems can never feed each other without limit.
  */
 export const SOFT_CAP: Partial<Record<RuneStat, number>> = {
-  prod: 4, // +400 % before slowing down
-  luck: 3,
-  click: 4,
-  lumen: 4,
-  frag: 2,
+  prod: 8, // +800 % before slowing down (runes alone are capped lower, see RUNE_CAP)
+  luck: 6,
+  click: 8,
+  lumen: 6,
+  frag: 3,
   pet: 2,
 };
 

@@ -8,6 +8,7 @@ import {
   FAMILIES,
   FAMILY_ORDER,
   FUSE,
+  RUNE_CAP,
   PITY,
   RUNE_SETS,
   RARITIES,
@@ -41,6 +42,14 @@ export function stacked(value: number, count: number): number {
   return count <= 0 ? 0 : value * Math.pow(count, STACK_EXP);
 }
 
+/** Share of RUNE_CAP available, by number of connected islands (1 to 4). */
+export const RUNE_CAP_SCALE = [0.1, 0.25, 0.55, 1];
+export function runeCapScale(state: GameState): number {
+  let n = 0;
+  for (const z in state.zones) if (state.zones[z as keyof GameState['zones']]) n++;
+  return RUNE_CAP_SCALE[Math.max(1, Math.min(4, n)) - 1];
+}
+
 /** Sum of every owned rune's bonus, with caps applied. Achievements add on top (see economy). */
 export function runeTotals(state: GameState): RuneTotals {
   const t = emptyTotals();
@@ -52,6 +61,9 @@ export function runeTotals(state: GameState): RuneTotals {
     if (def.stat2 && def.value2) t[def.stat2] += stacked(def.value2, n);
   }
   for (const set of RUNE_SETS) if (setComplete(state, set)) t[set.stat] += set.value;
+  // Runes resonate with the connected islands: their cap grows with each bridge.
+  const scale = runeCapScale(state);
+  for (const k in RUNE_CAP) t[k as RuneStat] = Math.min(t[k as RuneStat], RUNE_CAP[k as RuneStat]! * scale);
   for (const k in STAT_CAP) {
     const key = k as RuneStat;
     t[key] = Math.min(t[key], STAT_CAP[key]!);

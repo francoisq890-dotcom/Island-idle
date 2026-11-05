@@ -1,6 +1,6 @@
 import { SAVE_VERSION } from '../src/economy/state';
 import { describe, expect, it } from 'vitest';
-import { FAMILIES, RARITIES, RUNES, RUNE_BY_ID, STAT_CAP } from '../src/config/runes';
+import { FAMILIES, RARITIES, RUNES, RUNE_BY_ID, STAT_CAP, RUNE_CAP } from '../src/config/runes';
 import { computeRates, doPrestige, harvestEx, nextMachineCost } from '../src/economy/economy';
 import { bulkOf, buyAltarUpgrade, cooldownOf, doRoll, luckOf, oddsLabel, rarityChances, rollRarity, runeTotals, runesAfterPrestige, stacked } from '../src/economy/runes';
 import { checkAchievements } from '../src/economy/achievements';
@@ -64,7 +64,10 @@ describe('rolling', () => {
     expect(stacked(0.01, 100)).toBeLessThan(1);
     const s = createInitialState(0);
     s.runes.em4 = 1e6; // cost reduction rune
-    expect(runeTotals(s).cost).toBe(STAT_CAP.cost);
+    // Rune caps grow with the connected islands; never above the global cap.
+    expect(runeTotals(s).cost).toBeCloseTo(RUNE_CAP.cost! * 0.1);
+    s.zones = { home: true, forge: true, geyser: true, sky: true };
+    expect(runeTotals(s).cost).toBeLessThanOrEqual(STAT_CAP.cost!);
   });
   it('runes boost the economy', () => {
     const s = createInitialState(0);

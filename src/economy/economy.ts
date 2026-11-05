@@ -187,7 +187,7 @@ export function computeRates(state: GameState): Rates {
 
   const bonus = bonusTotals(state);
   const cs = cycleSeeds(state);
-  const perkMult = (hasPerk(cs, 'prod2') ? 2 : 1) * (hasPerk(cs, 'prod3') ? 3 : 1) * crownProdMult(state) * (inChallenge(state, 'tenth') ? 0.1 : 1);
+  const perkMult = (hasPerk(cs, 'prod2') ? 1.5 : 1) * (hasPerk(cs, 'prod3') ? 2 : 1) * crownProdMult(state) * (inChallenge(state, 'tenth') ? 0.1 : 1);
   const surge = state.surge.until > state.clock ? state.surge.mult : 1;
   const pMult = prestigeMult(state.seeds) * (1 + bonus.prod) * perkMult * surge;
   const lumenMult = (1 + bonus.lumen) * (inChallenge(state, 'moonless') ? 0.25 : 1);
